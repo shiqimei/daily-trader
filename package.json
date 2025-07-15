@@ -1,0 +1,37 @@
+{
+  "name": "daily-trader",
+  "version": "1.0.0",
+  "description": "AI Streaming Test Suite with AWS Bedrock and OpenAI integration",
+  "main": "dist/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts",
+    "dev:watch": "nodemon --exec tsx src/main.ts",
+    "test": "tsx src/main.ts",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "ai",
+    "streaming",
+    "bedrock",
+    "openai",
+    "typescript",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.13.1",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "3.844.0",
+    "dotenv": "17.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.14",
+    "nodemon": "3.1.10",
+    "tsx": "4.20.3",
+    "typescript": "5.8.3"
+  }
+}

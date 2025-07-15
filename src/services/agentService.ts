@@ -84,10 +84,10 @@ export class AgentService {
 
     console.log('Streaming completion with tool support...');
     
-    // Get available MCP tools and convert to Bedrock format
+    // Get available MCP tools and convert to Bedrock format with MCP naming convention
     const mcpTools = await this.getAvailableTools();
     const bedrockTools = mcpTools.map(tool => ({
-      name: tool.name,
+      name: `mcp__${tool.serverName}__${tool.name}`,
       description: tool.description || `Tool from ${tool.serverName}`,
       input_schema: {
         type: 'object',
@@ -246,9 +246,10 @@ Please use the provided context information to answer the user's query. If you n
   private formatToolsContext(tools: MCPTool[]): string {
     const toolDescriptions = tools.map(tool => {
       const desc = tool.description || 'No description available';
+      const mcpToolName = `mcp__${tool.serverName}__${tool.name}`;
       const schema = tool.inputSchema ? 
         `\n  Parameters: ${JSON.stringify(tool.inputSchema, null, 2)}` : '';
-      return `- **${tool.name}** (from ${tool.serverName}): ${desc}${schema}`;
+      return `- **${mcpToolName}** (from ${tool.serverName}): ${desc}${schema}`;
     }).join('\n');
 
     return `### Available Tools
@@ -326,7 +327,22 @@ ${resourceDescriptions}`;
   async executeTool(toolName: string, arguments_: any, serverName?: string): Promise<any> {
     try {
       console.log(`Executing tool: ${toolName}`);
-      const result = await this.mcpService.callTool(toolName, arguments_, serverName);
+      
+      // Parse MCP-style tool names (mcp__server__tool)
+      let actualToolName = toolName;
+      let targetServerName = serverName;
+      
+      if (toolName.startsWith('mcp__')) {
+        const parts = toolName.split('__');
+        if (parts.length >= 3) {
+          // Extract server name and tool name from mcp__server__tool format
+          targetServerName = parts[1];
+          actualToolName = parts.slice(2).join('__'); // In case tool name contains underscores
+          console.log(`Parsed MCP tool: server=${targetServerName}, tool=${actualToolName}`);
+        }
+      }
+      
+      const result = await this.mcpService.callTool(actualToolName, arguments_, targetServerName);
       console.log(`Tool execution completed: ${toolName}`);
       return result;
     } catch (error) {

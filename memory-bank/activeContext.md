@@ -2,68 +2,69 @@
 
 ## Current Work Focus
 
-✅ **COMPLETED**: Initial project setup and core implementation
-- Project initialized with pnpm and TypeScript
-- AWS Bedrock and OpenAI services implemented
-- Streaming functionality working for both providers
-- Configuration management with environment variables
-- Comprehensive test suite with performance comparison
+✅ **COMPLETED**: Bedrock-only implementation with bearer token authentication
+- Removed all OpenAI dependencies and code
+- Implemented bearer token authentication for AWS Bedrock
+- Claude Sonnet and Opus model testing with performance comparison
+- Streamlined configuration for single provider
+- Updated all documentation to reflect Bedrock-only approach
 
 ## Recent Changes
 
-### Project Initialization (Current Session)
-1. **Package Manager Setup**: Installed pnpm globally and initialized project
-2. **Dependency Installation**: 
-   - Core: `openai`, `@aws-sdk/client-bedrock-runtime`, `dotenv`
-   - Dev: `typescript`, `@types/node`, `tsx`, `nodemon`
-3. **TypeScript Configuration**: Generated `tsconfig.json` with ES2016 target
-4. **Environment Setup**: Created `.env` and `.env.example` files
-5. **Source Code Structure**: Implemented modular architecture with services pattern
+### Bedrock-Only Refactoring (Current Session)
+1. **Dependency Cleanup**: Removed OpenAI package and all related code
+2. **Authentication Update**: Switched to bearer token authentication
+   - Removed AWS access key/secret key configuration
+   - Added `AWS_BEARER_TOKEN_BEDROCK` environment variable
+3. **Service Simplification**: Deleted `openaiService.ts` completely
+4. **Configuration Refactor**: Updated `config.ts` for bearer token only
+5. **Testing Focus**: Modified tests to compare Claude models instead of providers
 
-### Key Files Created
-- `src/config.ts`: Centralized configuration management
-- `src/services/bedrockService.ts`: AWS Bedrock streaming implementation
-- `src/services/openaiService.ts`: OpenAI streaming implementation  
-- `src/main.ts`: Test suite and demonstration application
-- `package.json`: Updated with proper scripts and metadata
+### Key Files Modified
+- `src/config.ts`: Bearer token configuration only
+- `src/services/bedrockService.ts`: Bearer token authentication implementation
+- `src/main.ts`: Bedrock-only test suite with model comparisons
+- `package.json`: Removed OpenAI dependency, updated description
+- `.env` & `.env.example`: Bearer token configuration only
 
 ## Next Steps
 
 ### Immediate Actions
-1. **Test the Implementation**: Run the application to verify streaming works
-2. **Environment Variables**: User needs to configure actual API keys
-3. **Documentation**: Create README.md for end users
-4. **Error Testing**: Validate error handling with invalid credentials
+1. **Test Bearer Token Auth**: Verify the bearer token authentication works
+2. **Environment Variables**: User needs to configure actual bearer token
+3. **Model Testing**: Test both Claude Sonnet and Opus streaming
+4. **Error Testing**: Validate error handling with invalid bearer tokens
 
 ### Potential Enhancements
+- **Additional Claude Models**: Add support for new Claude variants
 - **Rate Limiting**: Implement request throttling for production use
-- **Concurrent Testing**: Add parallel streaming comparison
-- **Model Comparison**: Test different models (GPT-4, Claude Opus)
+- **Token Refresh**: Add automatic token refresh capabilities
 - **Metrics Export**: Save performance data to files
 - **Web Interface**: Create simple web UI for demonstrations
 
 ## Active Decisions & Considerations
 
 ### Architecture Decisions
-- **Service Pattern**: Chose separate service classes for clean separation
-- **Async Iterables**: Selected for modern streaming interface
-- **Error Isolation**: Each provider handles its own errors independently
-- **TypeScript Strict Mode**: Enabled for maximum type safety
+- **Single Provider**: Focused on AWS Bedrock only for simplicity
+- **Bearer Token Auth**: More secure than access key/secret approach
+- **Model Comparison**: Compare Claude models instead of different providers
+- **Streaming Focus**: Maintained real-time streaming as core feature
 
-### Configuration Decisions
-- **Environment Variables**: Chose `.env` file approach for simplicity
-- **Required vs Optional**: Made API keys required, regions optional
-- **Model IDs**: Used full AWS model identifiers with defaults
+### Authentication Decisions
+- **Bearer Token**: Chose bearer token over traditional AWS credentials
+- **Environment Storage**: Keep token in .env for development simplicity
+- **Security**: No token logging or exposure in error messages
+- **Validation**: Let AWS API handle token validation
 
 ### Testing Strategy
-- **Integration Tests**: Focus on real API integration rather than mocks
-- **Performance Metrics**: Measure actual streaming performance
+- **Model Comparison**: Focus on Claude Sonnet vs Opus performance
+- **Real-time Metrics**: Enhanced metrics with word count estimates
+- **Individual Tests**: Separate detailed tests for each model
 - **Error Scenarios**: Test graceful failure handling
-- **User Experience**: Prioritize clear output and feedback
 
 ## Current Status
 
-🟢 **Ready for Testing**: All core functionality implemented and ready to run
-🟡 **Requires Configuration**: User must add actual API keys to `.env` file
-🟢 **Documentation Complete**: Comprehensive memory bank created
-🟢 **Scripts Available**: Multiple ways to run the application (`dev`, `build`, `start`) 
+🟢 **Ready for Testing**: Bedrock-only functionality implemented and ready to run
+🟡 **Requires Bearer Token**: User must add actual AWS bearer token to `.env` file
+🟢 **Documentation Updated**: All memory bank files reflect Bedrock-only approach
+🟢 **Scripts Available**: Same development scripts work with new implementation 

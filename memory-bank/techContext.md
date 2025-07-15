@@ -1,4 +1,4 @@
-# Technical Context: Development Environment & Dependencies
+# Technical Context: AWS Bedrock Development Environment
 
 ## Technologies Used
 
@@ -8,7 +8,6 @@
 - **pnpm**: Fast, disk space efficient package manager
 
 ### Primary Dependencies
-- **openai**: Official OpenAI API client library
 - **@aws-sdk/client-bedrock-runtime**: AWS SDK for Bedrock streaming
 - **dotenv**: Environment variable management
 
@@ -30,12 +29,11 @@ npm install -g pnpm
 
 ### Environment Configuration
 1. Copy `.env.example` to `.env`
-2. Configure AWS credentials:
-   - `AWS_ACCESS_KEY_ID`
-   - `AWS_SECRET_ACCESS_KEY`
-   - `AWS_REGION` (default: us-east-1)
-3. Configure OpenAI API key:
-   - `OPENAI_API_KEY`
+2. Configure AWS Bearer Token:
+   - `AWS_BEARER_TOKEN_BEDROCK`
+3. Optional model configuration:
+   - `BEDROCK_CLAUDE_SONNET_MODEL_ID`
+   - `BEDROCK_CLAUDE_OPUS_MODEL_ID`
 
 ### Available Scripts
 ```bash
@@ -60,32 +58,33 @@ pnpm clean
 
 ## Technical Constraints
 
-### API Rate Limits
-- **AWS Bedrock**: Model-specific limits (check AWS console)
-- **OpenAI**: Tier-based rate limits
-- **Recommendation**: Implement rate limiting for production use
+### AWS Bedrock Limitations
+- **Bearer Token**: Must have valid AWS bearer token with Bedrock permissions
+- **Model Access**: May require requesting access to specific Claude models
+- **Regional Availability**: Claude models available in specific AWS regions
+- **Rate Limits**: Model-specific rate limits (check AWS console)
 
-### Model Availability
-- **AWS Bedrock**: Regional availability varies
-- **Model Access**: May require requesting access to specific models
-- **Fallback Strategy**: Handle model unavailability gracefully
+### Authentication Requirements
+- **Bearer Token Format**: Must be valid AWS bearer token
+- **Permissions**: Token must have Bedrock invoke permissions
+- **Security**: Token should be kept secure and not logged
 
 ### Memory & Performance
 - **Streaming**: Low memory footprint due to streaming approach
-- **Concurrent Requests**: Current implementation is sequential
-- **Optimization**: Consider connection pooling for high throughput
+- **Sequential Requests**: Current implementation tests models sequentially
+- **Optimization**: Consider connection reuse for high throughput
 
 ## Dependencies Management
 
 ### Version Strategy
 - **Exact Versions**: All dependencies pinned to exact versions
 - **Security Updates**: Regular dependency auditing recommended
-- **Compatibility**: AWS SDK and OpenAI SDK evolve frequently
+- **AWS SDK**: AWS SDK evolves frequently, monitor for updates
 
 ### Package Manager Features
-- **pnpm Workspaces**: Ready for monorepo if needed
-- **Peer Dependencies**: Automatically handled by pnpm
+- **pnpm Efficiency**: Fast installation and efficient disk usage
 - **Lock File**: `pnpm-lock.yaml` ensures reproducible builds
+- **Reduced Dependencies**: Minimal dependency footprint with Bedrock-only focus
 
 ## Build & Deployment
 
@@ -96,7 +95,21 @@ pnpm clean
 - **Source Maps**: Available for debugging
 
 ### Production Considerations
-- **Environment Variables**: Use secure secret management
+- **Bearer Token Security**: Use secure secret management systems
 - **Error Monitoring**: Implement structured logging
 - **Health Checks**: Add endpoint for service monitoring
-- **Containerization**: Dockerfile ready for Docker deployment 
+- **Containerization**: Dockerfile ready for Docker deployment
+
+## Bearer Token Management
+
+### Token Security
+- **Environment Variables**: Store token in .env file (gitignored)
+- **No Logging**: Never log or expose bearer token values
+- **Rotation**: Implement token rotation policies
+- **Access Control**: Limit token permissions to minimum required
+
+### Token Configuration
+- **AWS CLI**: Can obtain token using AWS CLI
+- **IAM Roles**: Prefer IAM roles for production deployments
+- **Temporary Tokens**: Support for temporary session tokens
+- **Validation**: Token validation happens at AWS API level 

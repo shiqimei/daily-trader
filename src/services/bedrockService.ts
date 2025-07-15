@@ -15,8 +15,9 @@ export class BedrockService {
     this.client = new BedrockRuntimeClient({
       region: config.aws.region,
       credentials: {
-        accessKeyId: config.aws.accessKeyId,
-        secretAccessKey: config.aws.secretAccessKey,
+        accessKeyId: 'dummy', // Bearer token auth doesn't use these
+        secretAccessKey: 'dummy',
+        sessionToken: config.aws.bearerToken,
       },
     });
   }

@@ -1,38 +1,39 @@
----
-description: Daily Trader Project Essential Rules
-globs: 
-alwaysApply: true
----
 
 # Daily Trader - Project Intelligence
 
 ## Core Architecture Patterns
 
 ### Service Layer Design
-- **Pattern**: Each AI provider gets its own service class (BedrockService, OpenAIService)
-- **Interface**: All services return `AsyncIterable<string>` for streaming
-- **Error Handling**: Provider-specific errors are caught and handled within each service
-- **Configuration**: Services read from centralized `config.ts` with environment validation
+- **Pattern**: Single BedrockService handles all Claude model interactions
+- **Interface**: Service returns `AsyncIterable<string>` for streaming
+- **Error Handling**: Bearer token authentication errors handled securely
+- **Configuration**: Service reads from centralized `config.ts` with bearer token validation
 
 ### Streaming Implementation
 - **AsyncIterable Pattern**: Use `async function*` generators for streaming responses
 - **Real-time Output**: Use `process.stdout.write(chunk)` for immediate display, not `console.log()`
-- **Chunk Processing**: Parse streaming responses incrementally, handle partial JSON gracefully
-- **Performance Metrics**: Track timing, chunk count, and content length for comparisons
+- **Chunk Processing**: Parse Claude streaming responses incrementally, handle partial JSON gracefully
+- **Performance Metrics**: Track timing, chunk count, character count, and word estimates
 
 ### Configuration Management
-- **Environment Variables**: All API keys and configuration through `.env` file
-- **Validation**: Required variables throw descriptive errors if missing
-- **Defaults**: Provide sensible defaults for optional configuration (regions, model IDs)
-- **Type Safety**: Strong TypeScript interfaces for all configuration structures
+- **Bearer Token**: All authentication through `AWS_BEARER_TOKEN_BEDROCK` environment variable
+- **Validation**: Required bearer token throws descriptive errors if missing
+- **Security**: No token logging or exposure in error messages
+- **Type Safety**: Strong TypeScript interfaces for configuration structures
 
 ## AWS Bedrock Specifics
+
+### Bearer Token Authentication
+- **Token Format**: AWS bearer token passed as sessionToken in AWS SDK credentials
+- **Security**: Token stored securely in environment variables, never logged
+- **Permissions**: Token must have Bedrock invoke permissions
+- **Error Handling**: Clear messages for invalid tokens without exposing token values
 
 ### Model Integration
 - **Claude Message Format**: Use `anthropic_version: 'bedrock-2023-05-31'` with messages array
 - **Streaming Response**: Parse `content_block_delta` events with `delta.text` content
+- **Model Support**: Claude Sonnet and Opus with convenience methods
 - **Model IDs**: Use full AWS model identifiers (e.g., `anthropic.claude-3-5-sonnet-20241022-v2:0`)
-- **Error Patterns**: AWS SDK errors need specific handling for access/permission issues
 
 ### Request Structure
 ```typescript
@@ -44,44 +45,44 @@ alwaysApply: true
 }
 ```
 
-## OpenAI Integration
-
-### Streaming Pattern
-- **Modern SDK**: Use OpenAI v5+ with `stream: true` parameter
-- **Response Parsing**: Extract `chunk.choices[0]?.delta?.content` from stream
-- **Error Handling**: OpenAI errors are different from AWS - handle API key and rate limit issues
-- **Model Selection**: Support both GPT-3.5 and GPT-4 with convenience methods
-
 ## Development Workflow
 
 ### Package Management
 - **pnpm**: Preferred package manager for this project
 - **Scripts**: Use `tsx` for development, `tsc` for building
 - **Development**: `pnpm dev` for quick testing, `pnpm dev:watch` for file watching
+- **Dependencies**: Minimal footprint with AWS SDK and dotenv only
 
 ### Environment Setup
-- **Template**: Always provide `.env.example` with all required variables
-- **Security**: `.env` files are gitignored, never commit API keys
+- **Template**: Always provide `.env.example` with bearer token structure
+- **Security**: `.env` files are gitignored, never commit bearer tokens
+- **Bearer Token**: Primary authentication method, simpler than access keys
 - **Regional**: AWS Bedrock availability varies by region - default to us-east-1
 
 ### Memory Bank Maintenance
-- **Documentation**: Keep memory-bank/ files updated with architectural decisions
+- **Documentation**: Keep memory-bank/ files updated with Bedrock-only decisions
 - **Progress Tracking**: Update progress.md and activeContext.md after major changes
-- **Todo Management**: Use todo.md for tracking enhancements and technical debt
+- **Todo Management**: Use todo.md for tracking Claude model enhancements
 
 ## Error Handling Philosophy
 
+### Bearer Token Security
+- **No Exposure**: Never log or expose bearer token values in error messages
+- **Clear Messages**: Provide actionable error messages for authentication failures
+- **Validation**: Let AWS API handle token validation, catch and interpret errors
+- **User Guidance**: Error messages include steps to resolve token issues
+
 ### Graceful Degradation
-- **Provider Isolation**: Failure in one service doesn't break others
+- **Model Isolation**: Different Claude models can fail independently
 - **User-Friendly Messages**: Clear, actionable error messages
-- **Configuration Validation**: Fail fast with descriptive messages for missing config
-- **API Failures**: Continue testing other providers even if one fails
+- **Configuration Validation**: Fail fast with descriptive messages for missing bearer token
+- **API Failures**: Continue testing other models even if one fails
 
 ### Common Issues
-- **Model Access**: AWS Bedrock may require requesting access to specific models
-- **Rate Limits**: Both providers have different rate limiting strategies
-- **Regions**: Some AWS Bedrock models aren't available in all regions
-- **Credentials**: Invalid credentials should produce clear guidance messages
+- **Bearer Token**: Invalid or expired bearer tokens are most common issue
+- **Model Access**: AWS Bedrock may require requesting access to specific Claude models
+- **Rate Limits**: Claude models have specific rate limiting strategies
+- **Regions**: Some Claude models aren't available in all regions
 
 ## Performance Considerations
 
@@ -89,28 +90,26 @@ alwaysApply: true
 - **Immediate Display**: Don't buffer full responses, stream as available
 - **Metrics Collection**: Track performance without impacting streaming speed
 - **Memory Usage**: Use streaming to avoid loading full responses into memory
-- **Comparison Fairness**: Use similar prompts and parameters across providers
+- **Model Fairness**: Use similar prompts and parameters across Claude models
 
 ### Scalability Patterns
-- **Connection Pooling**: Consider for high-throughput scenarios
+- **Connection Reuse**: Consider for high-throughput scenarios
 - **Rate Limiting**: Implement when moving to production
-- **Concurrent Requests**: Current implementation is sequential by design
+- **Sequential Requests**: Current implementation tests models sequentially
 - **Error Recovery**: Implement retry logic with exponential backoff
 
 ## Testing Strategy
 
 ### Integration Focus
-- **Real APIs**: Test against actual AWS Bedrock and OpenAI endpoints
-- **Configuration Testing**: Verify error handling with invalid credentials  
-- **Performance Baselines**: Establish baseline metrics for regression testing
-- **Model Availability**: Test that configured models are accessible
+- **Real Bedrock APIs**: Test against actual AWS Bedrock endpoints
+- **Bearer Token Testing**: Verify error handling with invalid bearer tokens
+- **Performance Baselines**: Establish baseline metrics for Claude model comparison
+- **Model Availability**: Test that Claude models are accessible with bearer token
 
 ### User Experience Testing
 - **Output Clarity**: Ensure streaming output is readable and informative
-- **Error Messages**: Verify error messages provide actionable guidance
-- **Performance Display**: Metrics should be meaningful and comparable
-- **Documentation**: README should enable successful setup from scratch
-description:
-globs:
+- **Error Messages**: Verify error messages provide actionable guidance without exposing tokens
+- **Performance Display**: Metrics should be meaningful and comparable between models
+- **Documentation**: README should enable successful setup with bearer token
 alwaysApply: false
 ---

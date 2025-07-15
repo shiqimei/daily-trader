@@ -27,8 +27,8 @@ export const config: Config = {
     bearerToken: getRequiredEnvVar('AWS_BEARER_TOKEN_BEDROCK'),
     region: process.env.AWS_REGION || 'us-east-1',
     models: {
-      claudeSonnet: process.env.BEDROCK_CLAUDE_SONNET_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0',
-      claudeOpus: process.env.BEDROCK_CLAUDE_OPUS_MODEL_ID || 'anthropic.claude-3-opus-20240229',
+      claudeSonnet: process.env.BEDROCK_CLAUDE_SONNET_MODEL_ID || 'anthropic.claude-sonnet-4-20250514-v1:0',
+      claudeOpus: process.env.BEDROCK_CLAUDE_OPUS_MODEL_ID || 'anthropic.claude-opus-4-20250514-v1:0',
     },
   },
 }; 

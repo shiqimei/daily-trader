@@ -1,17 +1,16 @@
-# System Patterns: AI Streaming Architecture
+# System Patterns: AWS Bedrock Streaming Architecture
 
 ## Architecture Overview
 
 ```
 daily-trader/
 ├── src/
-│   ├── config.ts                 # Environment & configuration management
+│   ├── config.ts                 # Environment & bearer token configuration
 │   ├── services/
-│   │   ├── bedrockService.ts     # AWS Bedrock streaming service
-│   │   └── openaiService.ts      # OpenAI streaming service
-│   └── main.ts                   # Test suite & demonstration
+│   │   └── bedrockService.ts     # AWS Bedrock streaming service
+│   └── main.ts                   # Claude model test suite
 ├── memory-bank/                  # Project documentation
-├── .env                          # Environment variables (gitignored)
+├── .env                          # Bearer token configuration (gitignored)
 ├── .env.example                  # Environment template
 └── package.json                  # Project configuration
 ```
@@ -19,57 +18,64 @@ daily-trader/
 ## Key Technical Decisions
 
 ### Service Layer Pattern
-- **Separation of Concerns**: Each AI provider has its own service class
-- **Consistent Interface**: Both services expose similar streaming methods
+- **Single Provider Focus**: BedrockService handles all Claude model interactions
+- **Model-Specific Methods**: Separate methods for Claude Sonnet and Opus
 - **Async Iterables**: Use modern async iteration for streaming responses
-- **Error Isolation**: Provider-specific error handling within each service
+- **Bearer Token Auth**: Secure authentication using AWS bearer tokens
 
 ### Configuration Management
-- **Centralized Config**: Single `config.ts` file manages all environment variables
-- **Validation**: Required environment variables throw errors if missing
+- **Centralized Config**: Single `config.ts` file manages bearer token and model configuration
+- **Token Validation**: Required bearer token throws error if missing
 - **Type Safety**: Strong TypeScript interfaces for configuration structure
-- **Defaults**: Sensible defaults for optional configuration values
+- **Model Defaults**: Sensible defaults for Claude model IDs
 
 ### Streaming Implementation
 - **AsyncIterable Pattern**: Return async iterables for consistent streaming interface
-- **Chunk Processing**: Parse streaming responses into text chunks
+- **Chunk Processing**: Parse Claude streaming responses into text chunks
 - **Real-time Output**: Use `process.stdout.write()` for immediate display
-- **Performance Metrics**: Track timing, chunk count, and content length
+- **Performance Metrics**: Track timing, chunk count, character count, and word estimates
 
 ## Design Patterns
 
-### Factory Pattern (Services)
-- Service classes instantiate their respective API clients
+### Factory Pattern (Service)
+- BedrockService instantiates AWS SDK client with bearer token
 - Configuration injected via constructor
-- Clean separation between service logic and API clients
+- Clean separation between service logic and AWS SDK
 
 ### Template Method (Streaming)
-- Common streaming interface across different providers
-- Provider-specific implementation details hidden
+- Common streaming interface for different Claude models
+- Model-specific implementation details handled internally
 - Consistent error handling and response parsing
 
 ### Strategy Pattern (Model Selection)
-- Convenience methods for different models (Sonnet, Opus, GPT-3.5, GPT-4)
+- Convenience methods for different models (Sonnet, Opus)
 - Easy switching between models without changing client code
-- Extensible for adding new models
+- Extensible for adding new Claude models
 
 ## Component Relationships
 
 ### Dependencies Flow
 ```
 main.ts → BedrockService → AWS SDK
-main.ts → OpenAIService → OpenAI SDK
-Services → config.ts → dotenv → .env
+BedrockService → config.ts → dotenv → .env
 ```
 
 ### Data Flow
 ```
-User Input → Service Classes → API Clients → Streaming Response → Async Iterator → Console Output
+User Input → BedrockService → AWS Bedrock API → Streaming Response → Async Iterator → Console Output
 ```
+
+## Authentication Strategy
+
+### Bearer Token Implementation
+- **Token Storage**: Secure storage in environment variables
+- **AWS SDK Integration**: Token passed as sessionToken to AWS credentials
+- **Error Handling**: Clear messages for invalid or missing tokens
+- **Security**: No token logging or exposure in error messages
 
 ## Error Handling Strategy
 
-- **Graceful Degradation**: Tests continue even if one provider fails
-- **Detailed Error Messages**: Clear indication of what went wrong
-- **Provider Isolation**: Failure in one service doesn't affect others
+- **Model Isolation**: Different Claude models can fail independently
+- **Detailed Error Messages**: Clear indication of authentication or model issues
+- **Token Security**: Error messages don't expose bearer token values
 - **User-Friendly Output**: Error messages include actionable information 

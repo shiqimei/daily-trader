@@ -1,8 +1,7 @@
 import { BedrockService } from './services/bedrockService';
-import { OpenAIService } from './services/openaiService';
 
-async function testBedrockStreaming() {
-  console.log('\n🚀 Testing AWS Bedrock Streaming...\n');
+async function testBedrockSonnet() {
+  console.log('\n🚀 Testing AWS Bedrock Claude Sonnet Streaming...\n');
   
   const bedrockService = new BedrockService();
   const prompt = 'Write a short story about a robot learning to paint. Make it creative and engaging.';
@@ -12,71 +11,91 @@ async function testBedrockStreaming() {
     console.log('\n🤖 Claude Sonnet Response:');
     console.log('---');
     
+    const startTime = Date.now();
     const stream = await bedrockService.streamSonnet(prompt, {
       maxTokens: 500,
       temperature: 0.8,
     });
 
     let fullResponse = '';
+    let chunkCount = 0;
+    
     for await (const chunk of stream) {
       process.stdout.write(chunk);
       fullResponse += chunk;
+      chunkCount++;
     }
     
+    const duration = Date.now() - startTime;
+    
     console.log('\n---');
-    console.log(`\n✅ Stream completed. Total tokens: ~${fullResponse.split(' ').length} words`);
+    console.log(`\n✅ Stream completed in ${duration}ms`);
+    console.log(`📦 Chunks received: ${chunkCount}`);
+    console.log(`📏 Total characters: ${fullResponse.length}`);
+    console.log(`📝 Word count: ~${fullResponse.split(' ').length} words`);
     
   } catch (error) {
-    console.error('❌ Bedrock streaming failed:', error);
+    console.error('❌ Bedrock Sonnet streaming failed:', error);
     if (error instanceof Error) {
       console.error('Error details:', error.message);
     }
   }
 }
 
-async function testOpenAIStreaming() {
-  console.log('\n🚀 Testing OpenAI Streaming...\n');
+async function testBedrockOpus() {
+  console.log('\n🚀 Testing AWS Bedrock Claude Opus Streaming...\n');
   
-  const openaiService = new OpenAIService();
-  const prompt = 'Write a short story about a robot learning to paint. Make it creative and engaging.';
+  const bedrockService = new BedrockService();
+  const prompt = 'Explain quantum computing in simple terms, focusing on practical applications.';
 
   try {
     console.log('📝 Prompt:', prompt);
-    console.log('\n🤖 GPT-3.5 Response:');
+    console.log('\n🤖 Claude Opus Response:');
     console.log('---');
     
-    const stream = await openaiService.streamGPT35(prompt, {
-      maxTokens: 500,
-      temperature: 0.8,
+    const startTime = Date.now();
+    const stream = await bedrockService.streamOpus(prompt, {
+      maxTokens: 400,
+      temperature: 0.6,
     });
 
     let fullResponse = '';
+    let chunkCount = 0;
+    
     for await (const chunk of stream) {
       process.stdout.write(chunk);
       fullResponse += chunk;
+      chunkCount++;
     }
     
+    const duration = Date.now() - startTime;
+    
     console.log('\n---');
-    console.log(`\n✅ Stream completed. Total tokens: ~${fullResponse.split(' ').length} words`);
+    console.log(`\n✅ Stream completed in ${duration}ms`);
+    console.log(`📦 Chunks received: ${chunkCount}`);
+    console.log(`📏 Total characters: ${fullResponse.length}`);
+    console.log(`📝 Word count: ~${fullResponse.split(' ').length} words`);
     
   } catch (error) {
-    console.error('❌ OpenAI streaming failed:', error);
+    console.error('❌ Bedrock Opus streaming failed:', error);
     if (error instanceof Error) {
       console.error('Error details:', error.message);
     }
   }
 }
 
-async function compareStreaming() {
-  console.log('\n🔄 Comparing Streaming Performance...\n');
+async function compareModels() {
+  console.log('\n🔄 Comparing Claude Models Performance...\n');
   
-  const prompt = 'Explain the concept of machine learning in simple terms.';
-  const services = [
-    { name: 'AWS Bedrock (Claude Sonnet)', service: new BedrockService() },
-    { name: 'OpenAI (GPT-3.5)', service: new OpenAIService() },
+  const prompt = 'Write a brief summary of artificial intelligence and its current applications.';
+  const bedrockService = new BedrockService();
+  
+  const models = [
+    { name: 'Claude Sonnet', method: () => bedrockService.streamSonnet(prompt, { maxTokens: 200, temperature: 0.7 }) },
+    { name: 'Claude Opus', method: () => bedrockService.streamOpus(prompt, { maxTokens: 200, temperature: 0.7 }) },
   ];
 
-  for (const { name, service } of services) {
+  for (const { name, method } of models) {
     console.log(`\n📊 Testing ${name}:`);
     const startTime = Date.now();
     
@@ -84,9 +103,7 @@ async function compareStreaming() {
       let chunkCount = 0;
       let totalLength = 0;
       
-      const stream = service instanceof BedrockService 
-        ? await service.streamSonnet(prompt, { maxTokens: 200 })
-        : await service.streamGPT35(prompt, { maxTokens: 200 });
+      const stream = await method();
 
       for await (const chunk of stream) {
         chunkCount++;
@@ -98,6 +115,7 @@ async function compareStreaming() {
       console.log(`  ✅ Completed in ${duration}ms`);
       console.log(`  📦 Chunks received: ${chunkCount}`);
       console.log(`  📏 Total characters: ${totalLength}`);
+      console.log(`  📝 Estimated words: ~${Math.round(totalLength / 5)} words`);
       
     } catch (error) {
       console.error(`  ❌ Failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -106,17 +124,18 @@ async function compareStreaming() {
 }
 
 async function main() {
-  console.log('🎯 Daily Trader - AI Streaming Test Suite');
-  console.log('==========================================');
+  console.log('🎯 Daily Trader - AWS Bedrock Streaming Test Suite');
+  console.log('==================================================');
 
-  // Test individual services
-  await testBedrockStreaming();
-  await testOpenAIStreaming();
+  // Test individual models
+  await testBedrockSonnet();
+  await testBedrockOpus();
   
-  // Compare performance
-  await compareStreaming();
+  // Compare model performance
+  await compareModels();
   
-  console.log('\n🎉 All tests completed!');
+  console.log('\n🎉 All Bedrock tests completed!');
+  console.log('\n💡 Note: Configure your AWS_BEARER_TOKEN_BEDROCK in .env to run these tests');
 }
 
 // Handle errors and run main function

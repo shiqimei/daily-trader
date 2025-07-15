@@ -1,7 +1,7 @@
 {
   "name": "daily-trader",
   "version": "1.0.0",
-  "description": "AI Streaming Test Suite with AWS Bedrock and OpenAI integration",
+  "description": "AWS Bedrock Claude Streaming Test Suite with bearer token authentication",
   "main": "dist/main.js",
   "type": "commonjs",
   "scripts": {
@@ -17,7 +17,8 @@
     "ai",
     "streaming",
     "bedrock",
-    "openai",
+    "claude",
+    "aws",
     "typescript",
     "nodejs"
   ],

@@ -60,7 +60,10 @@ async function testAgentService() {
     console.log(`  MCP Servers: ${status.mcp.connectedServers.length} connected`);
     
     if (status.mcp.connectedServers.length > 0) {
-      console.log(`    - ${status.mcp.connectedServers.join('\n    - ')}`);
+      console.log('  Connected servers:');
+      status.mcp.connectedServers.forEach(serverName => {
+        console.log(`    - ${serverName}`);
+      });
     }
     
     // List available tools and resources
@@ -71,20 +74,75 @@ async function testAgentService() {
     tools.forEach(tool => {
       console.log(`  - ${tool.name} (${tool.serverName}): ${tool.description || 'No description'}`);
     });
+    console.log(tools)
     
     const resources = await agentService.getAvailableResources();
     console.log(`Resources: ${resources.length} available`);
-    resources.slice(0, 5).forEach(resource => { // Show first 5 resources
+    resources.slice(0, 10).forEach(resource => { // Show first 10 resources
       console.log(`  - ${resource.name || resource.uri} (${resource.serverName})`);
     });
-    if (resources.length > 5) {
-      console.log(`  ... and ${resources.length - 5} more`);
+    if (resources.length > 10) {
+      console.log(`  ... and ${resources.length - 10} more`);
+    }
+
+    // Test SSE MCP server specifically
+    if (status.mcp.connectedServers.includes('context7-sse')) {
+      console.log('\n🌐 Testing SSE MCP Server (context7.com)...');
+      
+      const sseTools = tools.filter(tool => tool.serverName === 'context7-sse');
+      const sseResources = resources.filter(resource => resource.serverName === 'context7-sse');
+      
+      console.log(`SSE Server Tools: ${sseTools.length}`);
+      sseTools.forEach(tool => {
+        console.log(`  📋 ${tool.name}: ${tool.description || 'No description'}`);
+      });
+      
+      console.log(`SSE Server Resources: ${sseResources.length}`);
+      sseResources.slice(0, 5).forEach(resource => {
+        console.log(`  📄 ${resource.name || resource.uri}`);
+      });
+      
+      // Test tool-enabled completion with SSE server tools
+      if (sseTools.length > 0) {
+        console.log('\nTesting Agent Completion with SSE Server Tools...');
+        
+        const prompt = 'What tools and capabilities are available from the Context7 SSE MCP server? Please explore and describe what you can do.';
+        console.log('Prompt:', prompt);
+        console.log('\nAgent Response:');
+        console.log('---');
+        
+        const startTime = Date.now();
+        const stream = await agentService.streamCompletionWithTools(prompt, {
+          includeAvailableTools: true,
+          includeAvailableResources: true,
+          maxTokens: 1000,
+          temperature: 0.7,
+        });
+        
+        let fullResponse = '';
+        let chunkCount = 0;
+        
+        for await (const chunk of stream) {
+          process.stdout.write(chunk);
+          fullResponse += chunk;
+          chunkCount++;
+        }
+        
+        const duration = Date.now() - startTime;
+        
+        console.log('\n---');
+        console.log(`\nSSE server test completed in ${duration}ms`);
+        console.log(`Chunks received: ${chunkCount}`);
+        console.log(`Total characters: ${fullResponse.length}`);
+      }
+    } else {
+      console.log('\n⚠️  SSE MCP server (context7-sse) not connected');
     }
     
-    // Test tool-enabled completion
-    console.log('\nTesting Agent Completion with Tools...');
+    // Test tool-enabled completion with all available tools
+    console.log('\nTesting Agent Completion with All Available Tools...');
     
-    const prompt = 'Please help me list the files in the current directory and read the content of test-file.txt if it exists.';
+    const prompt = 'Please help me understand what MCP servers are connected and what tools they provide. Also, if there are any file-related tools, list the files in the current directory.';
     console.log('Prompt:', prompt);
     console.log('\nAgent Response:');
     console.log('---');
@@ -107,33 +165,6 @@ async function testAgentService() {
     
     const duration = Date.now() - startTime;
     
-    console.log('\n---');
-    console.log(`\nAgent completion with tools finished in ${duration}ms`);
-    console.log(`Chunks received: ${chunkCount}`);
-    console.log(`Total characters: ${fullResponse.length}`);
-    
-    // Test trading-specific analysis if we have market-related resources
-          if (resources.some(r => r.name?.toLowerCase().includes('market') || r.uri.toLowerCase().includes('market'))) {
-        console.log('\nTesting Trading Analysis...');
-        
-        const tradingQuery = 'What are the key indicators I should watch for cryptocurrency trading today?';
-        console.log('Trading Query:', tradingQuery);
-        console.log('\nTrading Analysis Response:');
-      console.log('---');
-      
-              const tradingStream = await agentService.streamTradingAnalysis(tradingQuery);
-      
-      for await (const chunk of tradingStream) {
-        process.stdout.write(chunk);
-      }
-      
-              console.log('\n---');
-        console.log('Trading analysis completed');
-    }
-    
-    // Clean up
-    await agentService.disconnect();
-    
   } catch (error) {
     console.error('Agent Service test failed:', error);
     if (error instanceof Error) {
@@ -142,58 +173,8 @@ async function testAgentService() {
   }
 }
 
-async function testAdvancedSonnet() {
-  console.log('\nTesting Claude Sonnet Advanced Features...\n');
-  
-  const prompt = 'Write a brief summary of artificial intelligence and its current applications.';
-  const bedrockService = new BedrockService();
-  
-  console.log('Testing Claude Sonnet with different parameters:');
-  const startTime = Date.now();
-  
-  try {
-    let chunkCount = 0;
-    let totalLength = 0;
-    
-    const stream = await bedrockService.streamSonnetText(prompt, { maxTokens: 300, temperature: 0.7 });
-
-    for await (const chunk of stream) {
-      chunkCount++;
-      totalLength += chunk.length;
-      // Don't print chunks during comparison to keep output clean
-    }
-    
-    const duration = Date.now() - startTime;
-    console.log(`  Completed in ${duration}ms`);
-    console.log(`  Chunks received: ${chunkCount}`);
-    console.log(`  Total characters: ${totalLength}`);
-    console.log(`  Estimated words: ~${Math.round(totalLength / 5)} words`);
-    
-  } catch (error) {
-    console.error(`  Failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
-
 async function main() {
-  console.log('Daily Trader - Agent Service Test Suite');
-  console.log('===============================================');
-
-  // Test basic Bedrock functionality
-  await testBedrockSonnet();
-  
-  // Test agent service functionality
   await testAgentService();
-  
-  // Test advanced features
-  await testAdvancedSonnet();
-  
-  console.log('\nAll tests completed!');
-  console.log('\nNote: AWS credentials configured via environment variables');
-  console.log('MCP servers can be configured via environment variables:');
-  console.log('   - MCP_ENABLED=true/false');
-  console.log('   - MCP_FILESYSTEM_SERVER_PATH=/path/to/filesystem/server');
-  console.log('   - MCP_WEBSEARCH_SERVER_PATH=/path/to/websearch/server');
-  console.log('   - SEARCH_API_KEY=your_search_api_key');
 }
 
 // Handle errors and run main function

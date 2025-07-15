@@ -7,6 +7,7 @@ export interface MCPServerConfig {
   args?: string[];
   env?: Record<string, string>;
   transport?: 'stdio' | 'sse';
+  url?: string; // Required for SSE transport
 }
 
 export interface Config {
@@ -82,6 +83,14 @@ function getDefaultMCPServers(): MCPServerConfig[] {
       },
     });
   }
+
+  // SSE MCP server for testing
+  servers.push({
+    name: 'context7-sse',
+    command: '', // Not used for SSE transport
+    transport: 'sse',
+    url: 'https://mcp.context7.com/sse',
+  });
   
   return servers;
 }

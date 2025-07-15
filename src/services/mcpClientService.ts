@@ -1,4 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import {
   CallToolResult,
@@ -50,27 +51,40 @@ export class MCPClientService {
   private async connectToServer(serverConfig: MCPServerConfig): Promise<void> {
     console.log(`Connecting to MCP server: ${serverConfig.name}`);
 
-    // Create clean environment object
-    const cleanEnv: Record<string, string> = {};
-    
-    // Copy process env with proper type handling
-    for (const [key, value] of Object.entries(process.env)) {
-      if (value !== undefined) {
-        cleanEnv[key] = value;
-      }
-    }
-    
-    // Add server-specific env vars
-    if (serverConfig.env) {
-      Object.assign(cleanEnv, serverConfig.env);
-    }
+    let transport;
 
-    // Create transport (currently only stdio supported)
-    const transport = new StdioClientTransport({
-      command: serverConfig.command,
-      args: serverConfig.args || [],
-      env: cleanEnv,
-    });
+    if (serverConfig.transport === 'sse') {
+      // SSE transport for remote servers
+      if (!serverConfig.url) {
+        throw new Error(`SSE transport requires a URL for server ${serverConfig.name}`);
+      }
+      
+      transport = new SSEClientTransport(new URL(serverConfig.url));
+      console.log(`Using SSE transport to connect to ${serverConfig.url}`);
+    } else {
+      // Default to stdio transport for local servers
+      // Create clean environment object
+      const cleanEnv: Record<string, string> = {};
+      
+      // Copy process env with proper type handling
+      for (const [key, value] of Object.entries(process.env)) {
+        if (value !== undefined) {
+          cleanEnv[key] = value;
+        }
+      }
+      
+      // Add server-specific env vars
+      if (serverConfig.env) {
+        Object.assign(cleanEnv, serverConfig.env);
+      }
+
+      transport = new StdioClientTransport({
+        command: serverConfig.command,
+        args: serverConfig.args || [],
+        env: cleanEnv,
+      });
+      console.log(`Using stdio transport for command: ${serverConfig.command}`);
+    }
 
     const client = new Client({
       name: `daily-trader-client-${serverConfig.name}`,

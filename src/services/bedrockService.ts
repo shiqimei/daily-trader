@@ -12,14 +12,31 @@ export class BedrockService {
   private client: BedrockRuntimeClient;
 
   constructor() {
-    this.client = new BedrockRuntimeClient({
+    // Use traditional AWS credentials if available, otherwise fall back to bearer token
+    const clientConfig: any = {
       region: config.aws.region,
-      credentials: {
+    };
+
+    if (config.aws.accessKeyId && config.aws.secretAccessKey) {
+      // Traditional AWS credentials
+      clientConfig.credentials = {
+        accessKeyId: config.aws.accessKeyId,
+        secretAccessKey: config.aws.secretAccessKey,
+      };
+      console.log('Using traditional AWS credentials for Bedrock authentication');
+    } else if (config.aws.bearerToken) {
+      // Bearer token authentication
+      clientConfig.credentials = {
         accessKeyId: 'dummy', // Bearer token auth doesn't use these
         secretAccessKey: 'dummy',
         sessionToken: config.aws.bearerToken,
-      },
-    });
+      };
+      console.log('Using bearer token for Bedrock authentication');
+    } else {
+      throw new Error('No valid AWS credentials found');
+    }
+
+    this.client = new BedrockRuntimeClient(clientConfig);
   }
 
   async streamCompletion(options: BedrockStreamingOptions): Promise<AsyncIterable<string>> {
@@ -91,18 +108,10 @@ export class BedrockService {
     }
   }
 
-  // Convenience methods for specific models
+  // Convenience method for Claude Sonnet
   async streamSonnet(prompt: string, options?: Partial<BedrockStreamingOptions>): Promise<AsyncIterable<string>> {
     return this.streamCompletion({
       modelId: config.aws.models.claudeSonnet,
-      prompt,
-      ...options,
-    });
-  }
-
-  async streamOpus(prompt: string, options?: Partial<BedrockStreamingOptions>): Promise<AsyncIterable<string>> {
-    return this.streamCompletion({
-      modelId: config.aws.models.claudeOpus,
       prompt,
       ...options,
     });

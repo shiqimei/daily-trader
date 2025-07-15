@@ -42,104 +42,57 @@ async function testBedrockSonnet() {
   }
 }
 
-async function testBedrockOpus() {
-  console.log('\n🚀 Testing AWS Bedrock Claude Opus Streaming...\n');
-  
-  const bedrockService = new BedrockService();
-  const prompt = 'Explain quantum computing in simple terms, focusing on practical applications.';
 
-  try {
-    console.log('📝 Prompt:', prompt);
-    console.log('\n🤖 Claude Opus Response:');
-    console.log('---');
-    
-    const startTime = Date.now();
-    const stream = await bedrockService.streamOpus(prompt, {
-      maxTokens: 400,
-      temperature: 0.6,
-    });
 
-    let fullResponse = '';
-    let chunkCount = 0;
-    
-    for await (const chunk of stream) {
-      process.stdout.write(chunk);
-      fullResponse += chunk;
-      chunkCount++;
-    }
-    
-    const duration = Date.now() - startTime;
-    
-    console.log('\n---');
-    console.log(`\n✅ Stream completed in ${duration}ms`);
-    console.log(`📦 Chunks received: ${chunkCount}`);
-    console.log(`📏 Total characters: ${fullResponse.length}`);
-    console.log(`📝 Word count: ~${fullResponse.split(' ').length} words`);
-    
-  } catch (error) {
-    console.error('❌ Bedrock Opus streaming failed:', error);
-    if (error instanceof Error) {
-      console.error('Error details:', error.message);
-    }
-  }
-}
-
-async function compareModels() {
-  console.log('\n🔄 Comparing Claude Models Performance...\n');
+async function testAdvancedSonnet() {
+  console.log('\n🔄 Testing Claude Sonnet Advanced Features...\n');
   
   const prompt = 'Write a brief summary of artificial intelligence and its current applications.';
   const bedrockService = new BedrockService();
   
-  const models = [
-    { name: 'Claude Sonnet', method: () => bedrockService.streamSonnet(prompt, { maxTokens: 200, temperature: 0.7 }) },
-    { name: 'Claude Opus', method: () => bedrockService.streamOpus(prompt, { maxTokens: 200, temperature: 0.7 }) },
-  ];
-
-  for (const { name, method } of models) {
-    console.log(`\n📊 Testing ${name}:`);
-    const startTime = Date.now();
+  console.log('📊 Testing Claude Sonnet with different parameters:');
+  const startTime = Date.now();
+  
+  try {
+    let chunkCount = 0;
+    let totalLength = 0;
     
-    try {
-      let chunkCount = 0;
-      let totalLength = 0;
-      
-      const stream = await method();
+    const stream = await bedrockService.streamSonnet(prompt, { maxTokens: 300, temperature: 0.7 });
 
-      for await (const chunk of stream) {
-        chunkCount++;
-        totalLength += chunk.length;
-        // Don't print chunks during comparison to keep output clean
-      }
-      
-      const duration = Date.now() - startTime;
-      console.log(`  ✅ Completed in ${duration}ms`);
-      console.log(`  📦 Chunks received: ${chunkCount}`);
-      console.log(`  📏 Total characters: ${totalLength}`);
-      console.log(`  📝 Estimated words: ~${Math.round(totalLength / 5)} words`);
-      
-    } catch (error) {
-      console.error(`  ❌ Failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    for await (const chunk of stream) {
+      chunkCount++;
+      totalLength += chunk.length;
+      // Don't print chunks during comparison to keep output clean
     }
+    
+    const duration = Date.now() - startTime;
+    console.log(`  ✅ Completed in ${duration}ms`);
+    console.log(`  📦 Chunks received: ${chunkCount}`);
+    console.log(`  📏 Total characters: ${totalLength}`);
+    console.log(`  📝 Estimated words: ~${Math.round(totalLength / 5)} words`);
+    
+  } catch (error) {
+    console.error(`  ❌ Failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
 async function main() {
-  console.log('🎯 Daily Trader - AWS Bedrock Streaming Test Suite');
-  console.log('==================================================');
+  console.log('🎯 Daily Trader - AWS Bedrock Claude Sonnet Test Suite');
+  console.log('=======================================================');
 
-  // Test individual models
+  // Test Claude Sonnet
   await testBedrockSonnet();
-  await testBedrockOpus();
   
-  // Compare model performance
-  await compareModels();
+  // Test advanced features
+  await testAdvancedSonnet();
   
   console.log('\n🎉 All Bedrock tests completed!');
-  console.log('\n💡 Note: Configure your AWS_BEARER_TOKEN_BEDROCK in .env to run these tests');
+  console.log('\n💡 Note: AWS credentials configured via environment variables');
 }
 
 // Handle errors and run main function
-if (require.main === module) {
+// ES module equivalent of require.main === module
+if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error) => {
     console.error('💥 Fatal error:', error);
     process.exit(1);

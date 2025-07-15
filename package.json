@@ -26,8 +26,9 @@
   "license": "ISC",
   "packageManager": "pnpm@10.13.1",
   "dependencies": {
-    "dotenv": "17.2.0",
-    "@aws-sdk/client-bedrock-runtime": "3.844.0"
+    "@aws-sdk/client-bedrock-runtime": "3.844.0",
+    "@modelcontextprotocol/sdk": "^1.15.1",
+    "dotenv": "17.2.0"
   },
   "devDependencies": {
     "@types/node": "24.0.14",

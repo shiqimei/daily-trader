@@ -1,11 +1,22 @@
 import { BedrockRuntimeClient, InvokeModelWithResponseStreamCommand } from '@aws-sdk/client-bedrock-runtime';
 import { config } from '../config';
 
+export interface BedrockTool {
+  name: string;
+  description: string;
+  input_schema: {
+    type: string;
+    properties: Record<string, any>;
+    required?: string[];
+  };
+}
+
 export interface BedrockStreamingOptions {
   modelId: string;
   prompt: string;
   maxTokens?: number;
   temperature?: number;
+  tools?: BedrockTool[];
 }
 
 export class BedrockService {
@@ -39,11 +50,11 @@ export class BedrockService {
     this.client = new BedrockRuntimeClient(clientConfig);
   }
 
-  async streamCompletion(options: BedrockStreamingOptions): Promise<AsyncIterable<string>> {
-    const { modelId, prompt, maxTokens = 1000, temperature = 0.7 } = options;
+  async streamCompletion(options: BedrockStreamingOptions): Promise<AsyncIterable<any>> {
+    const { modelId, prompt, maxTokens = 1000, temperature = 0.7, tools } = options;
 
     // Prepare request body based on model type
-    const requestBody = this.prepareRequestBody(modelId, prompt, maxTokens, temperature);
+    const requestBody = this.prepareRequestBody(modelId, prompt, maxTokens, temperature, tools);
 
     const command = new InvokeModelWithResponseStreamCommand({
       modelId,
@@ -66,9 +77,9 @@ export class BedrockService {
     }
   }
 
-  private prepareRequestBody(modelId: string, prompt: string, maxTokens: number, temperature: number) {
+  private prepareRequestBody(modelId: string, prompt: string, maxTokens: number, temperature: number, tools?: BedrockTool[]) {
     if (modelId.includes('anthropic.claude')) {
-      return {
+      const requestBody: any = {
         anthropic_version: 'bedrock-2023-05-31',
         max_tokens: maxTokens,
         temperature,
@@ -79,13 +90,20 @@ export class BedrockService {
           },
         ],
       };
+
+      // Add tools if provided
+      if (tools && tools.length > 0) {
+        requestBody.tools = tools;
+      }
+
+      return requestBody;
     }
     
     // Add support for other models as needed
     throw new Error(`Unsupported model: ${modelId}`);
   }
 
-  private async* parseStreamingResponse(stream: any): AsyncIterable<string> {
+  private async* parseStreamingResponse(stream: any): AsyncIterable<any> {
     const decoder = new TextDecoder();
     
     for await (const chunk of stream) {
@@ -96,9 +114,22 @@ export class BedrockService {
           const parsed = JSON.parse(chunkData);
           
           if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-            yield parsed.delta.text;
+            yield { type: 'text', content: parsed.delta.text };
+          } else if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'tool_use') {
+            yield { 
+              type: 'tool_use_start', 
+              tool_use: parsed.content_block 
+            };
+          } else if (parsed.type === 'content_block_delta' && parsed.delta?.partial_json) {
+            yield { 
+              type: 'tool_use_delta', 
+              partial_json: parsed.delta.partial_json 
+            };
           } else if (parsed.type === 'message_delta' && parsed.delta?.stop_reason) {
-            // Stream ended
+            yield { 
+              type: 'stop', 
+              stop_reason: parsed.delta.stop_reason 
+            };
             break;
           }
         } catch (error) {
@@ -109,11 +140,25 @@ export class BedrockService {
   }
 
   // Convenience method for Claude Sonnet
-  async streamSonnet(prompt: string, options?: Partial<BedrockStreamingOptions>): Promise<AsyncIterable<string>> {
+  async streamSonnet(prompt: string, options?: Partial<BedrockStreamingOptions>): Promise<AsyncIterable<any>> {
     return this.streamCompletion({
       modelId: config.aws.models.claudeSonnet,
       prompt,
       ...options,
     });
+  }
+
+  // Convenience method for Claude Sonnet that returns text only (for backwards compatibility)
+  async streamSonnetText(prompt: string, options?: Partial<BedrockStreamingOptions>): Promise<AsyncIterable<string>> {
+    const stream = await this.streamSonnet(prompt, options);
+    return this.convertToTextStream(stream);
+  }
+
+  private async* convertToTextStream(stream: AsyncIterable<any>): AsyncIterable<string> {
+    for await (const chunk of stream) {
+      if (chunk.type === 'text') {
+        yield chunk.content;
+      }
+    }
   }
 } 

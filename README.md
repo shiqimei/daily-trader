@@ -2,7 +2,7 @@
 
 A comprehensive Node.js TypeScript application for testing and comparing streaming capabilities between Claude models on AWS Bedrock using bearer token authentication.
 
-## 🚀 Features
+## Features
 
 - **AWS Bedrock Integration**: Secure bearer token authentication
 - **Claude Model Support**: Test Claude Sonnet and Opus models
@@ -12,14 +12,14 @@ A comprehensive Node.js TypeScript application for testing and comparing streami
 - **Streamlined Architecture**: Clean single-provider focus
 - **Comprehensive Error Handling**: Graceful failure management with token security
 
-## 📋 Prerequisites
+## Prerequisites
 
 - **Node.js** 18+ (LTS recommended)
 - **pnpm** (fast, efficient package manager)
 - **AWS Account** with Bedrock access
 - **AWS Bearer Token** with Bedrock invoke permissions
 
-## 🛠️ Installation
+## Installation
 
 1. **Clone the repository** (or ensure you're in the project directory)
    ```bash
@@ -36,7 +36,7 @@ A comprehensive Node.js TypeScript application for testing and comparing streami
    pnpm install
    ```
 
-## ⚙️ Configuration
+## Configuration
 
 1. **Copy the environment template**
    ```bash
@@ -66,7 +66,7 @@ A comprehensive Node.js TypeScript application for testing and comparing streami
 3. Request access to Claude models (may take time for approval)
 4. Generate a bearer token through IAM or use temporary credentials
 
-## 🎯 Usage
+## Usage
 
 ### Quick Start
 ```bash
@@ -117,50 +117,50 @@ The test suite runs three main demonstrations:
 - Displays side-by-side performance metrics
 - Helps evaluate which model works better for specific use cases
 
-## 📊 Sample Output
+## Sample Output
 
 ```
-🎯 Daily Trader - AWS Bedrock Streaming Test Suite
-==================================================
+Daily Trader - AWS Bedrock Streaming Test Suite
+===============================================
 
-🚀 Testing AWS Bedrock Claude Sonnet Streaming...
+Testing AWS Bedrock Claude Sonnet Streaming...
 
-📝 Prompt: Write a short story about a robot learning to paint.
+Prompt: Write a short story about a robot learning to paint.
 
-🤖 Claude Sonnet Response:
+Claude Sonnet Response:
 ---
 In the sterile halls of TechnoLab, ARIA-7 rolled between workstations...
 [Real-time streaming text appears here]
 ---
 
-✅ Stream completed in 2341ms
-📦 Chunks received: 23
-📏 Total characters: 856
-📝 Word count: ~127 words
+Stream completed in 2341ms
+Chunks received: 23
+Total characters: 856
+Word count: ~127 words
 
-🚀 Testing AWS Bedrock Claude Opus Streaming...
+Testing AWS Bedrock Claude Opus Streaming...
 [Similar output for Opus]
 
-🔄 Comparing Claude Models Performance...
+Comparing Claude Models Performance...
 
-📊 Testing Claude Sonnet:
-  ✅ Completed in 2341ms
-  📦 Chunks received: 23
-  📏 Total characters: 856
-  📝 Estimated words: ~171 words
+Testing Claude Sonnet:
+  Completed in 2341ms
+  Chunks received: 23
+  Total characters: 856
+  Estimated words: ~171 words
 
-📊 Testing Claude Opus:
-  ✅ Completed in 2789ms
-  📦 Chunks received: 31
-  📏 Total characters: 1024
-  📝 Estimated words: ~204 words
+Testing Claude Opus:
+  Completed in 2789ms
+  Chunks received: 31
+  Total characters: 1024
+  Estimated words: ~204 words
 
-🎉 All Bedrock tests completed!
+All Bedrock tests completed!
 
-💡 Note: Configure your AWS_BEARER_TOKEN_BEDROCK in .env to run these tests
+Note: Configure your AWS_BEARER_TOKEN_BEDROCK in .env to run these tests
 ```
 
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 daily-trader/
@@ -177,7 +177,7 @@ daily-trader/
 └── README.md                     # This file
 ```
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -208,7 +208,7 @@ daily-trader/
 3. **Test connectivity**: Ensure you can reach AWS Bedrock APIs
 4. **Check model access**: Some Claude models require approval
 
-## 🚀 Next Steps
+## Next Steps
 
 After getting the basic functionality working, consider:
 
@@ -225,7 +225,7 @@ After getting the basic functionality working, consider:
 - **Token Rotation**: Regularly rotate bearer tokens for security
 - **Permissions**: Use least-privilege principle for bearer token permissions
 
-## 📝 License
+## License
 
 ISC License - See package.json for details.
 

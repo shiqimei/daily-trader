@@ -1,6 +1,14 @@
 
 import 'dotenv/config';
 
+export interface MCPServerConfig {
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  transport?: 'stdio' | 'sse';
+}
+
 export interface Config {
   aws: {
     // Traditional AWS credentials (preferred)
@@ -12,6 +20,10 @@ export interface Config {
     models: {
       claudeSonnet: string;
     };
+  };
+  mcp: {
+    servers: MCPServerConfig[];
+    enabled: boolean;
   };
 }
 
@@ -44,6 +56,36 @@ function validateAwsCredentials() {
 // Validate credentials before creating config
 validateAwsCredentials();
 
+// Default MCP servers configuration
+function getDefaultMCPServers(): MCPServerConfig[] {
+  const servers: MCPServerConfig[] = [];
+  
+  // Example: File system MCP server
+  if (process.env.MCP_FILESYSTEM_SERVER_PATH) {
+    servers.push({
+      name: 'filesystem',
+      command: process.env.MCP_FILESYSTEM_SERVER_PATH,
+      args: ['/home/ubuntu/daily-trader'], // Allow access to current directory
+      transport: 'stdio',
+    });
+  }
+  
+  // Example: Web search MCP server
+  if (process.env.MCP_WEBSEARCH_SERVER_PATH) {
+    servers.push({
+      name: 'websearch',
+      command: 'node',
+      args: [process.env.MCP_WEBSEARCH_SERVER_PATH],
+      transport: 'stdio',
+      env: {
+        SEARCH_API_KEY: process.env.SEARCH_API_KEY || '',
+      },
+    });
+  }
+  
+  return servers;
+}
+
 export const config: Config = {
   aws: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -53,5 +95,9 @@ export const config: Config = {
     models: {
       claudeSonnet: process.env.BEDROCK_CLAUDE_SONNET_MODEL_ID || 'apac.anthropic.claude-sonnet-4-20250514-v1:0',
     },
+  },
+  mcp: {
+    enabled: process.env.MCP_ENABLED !== 'false',
+    servers: getDefaultMCPServers(),
   },
 }; 

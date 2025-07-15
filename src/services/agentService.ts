@@ -1,4 +1,4 @@
-import { config } from '../config.js';
+import { config, MCPServerConfig } from '../config.js';
 import { BedrockService } from './bedrockService.js';
 import { MCPClientService, MCPResource, MCPTool } from './mcpClientService.js';
 
@@ -20,29 +20,29 @@ export class AgentService {
   private bedrockService: BedrockService;
   private mcpService: MCPClientService;
   private isInitialized = false;
+  private customMcpServers?: MCPServerConfig[];
 
-  constructor() {
+  constructor(customMcpServers?: MCPServerConfig[]) {
     this.bedrockService = new BedrockService();
     this.mcpService = new MCPClientService();
+    this.customMcpServers = customMcpServers;
   }
 
   async initialize(): Promise<void> {
     if (this.isInitialized) {
-      console.log('Enhanced LLM service already initialized');
       return;
     }
 
-    console.log('Initializing Agent Service...');
+    const serversToUse = this.customMcpServers || config.mcp.servers;
+    const mcpEnabled = this.customMcpServers ? this.customMcpServers.length > 0 : config.mcp.enabled;
 
-    // Initialize MCP client if enabled
-    if (config.mcp.enabled && config.mcp.servers.length > 0) {
-      await this.mcpService.initialize(config.mcp.servers);
+    if (mcpEnabled && serversToUse.length > 0) {
+      await this.mcpService.initialize(serversToUse);
     } else {
-      console.log('Warning: MCP is disabled or no servers configured');
+      console.warn('Warning: MCP is disabled or no servers configured');
     }
 
     this.isInitialized = true;
-    console.log('Agent Service initialized');
   }
 
   async streamCompletion(
@@ -56,8 +56,6 @@ export class AgentService {
     // Build enhanced context
     const enhancedPrompt = await this.buildEnhancedPrompt(prompt, options);
 
-    console.log('Streaming completion with MCP context...');
-    
     // Stream response using Bedrock and convert to text only
     const rawStream = await this.bedrockService.streamSonnet(enhancedPrompt, {
       maxTokens: options.maxTokens,
@@ -81,8 +79,6 @@ export class AgentService {
     if (!this.isInitialized) {
       await this.initialize();
     }
-
-    console.log('Streaming completion with tool support...');
     
     // Get available MCP tools and convert to Bedrock format with MCP naming convention
     const mcpTools = await this.getAvailableTools();
@@ -139,7 +135,6 @@ export class AgentService {
         } else if (chunk.type === 'tool_use_start') {
           currentToolUse = chunk.tool_use;
           accumulatedJson = '';
-          yield `\n\n[Calling tool: ${currentToolUse.name}]`;
         } else if (chunk.type === 'tool_use_delta') {
           accumulatedJson += chunk.partial_json;
         } else if (chunk.type === 'stop') {
@@ -147,13 +142,10 @@ export class AgentService {
             // Execute the tool
             try {
               const toolInput = JSON.parse(accumulatedJson);
-              console.log(`Executing tool: ${currentToolUse.name} with input:`, toolInput);
-              
+              yield `\n[Calling tool] ${currentToolUse.name} ${JSON.stringify(toolInput)}\n`;
               const toolResult = await this.executeTool(currentToolUse.name, toolInput);
+              yield `\n[Tool executed] ${JSON.stringify(toolResult)}\n`;
               
-              yield `\n[Tool executed successfully]\n`;
-              
-                             // Continue conversation with tool result  
                conversationHistory.push({
                  role: 'assistant',
                  content: `Used tool ${currentToolUse.name}`
@@ -187,10 +179,15 @@ export class AgentService {
   }
 
   private buildConversationPrompt(history: any[]): string {
-    // For simplicity, we'll use the last user message
-    // In a more sophisticated implementation, we'd rebuild the entire conversation
-    const lastUserMessage = history[history.length - 1];
-    return lastUserMessage.content[0].content || 'Please continue based on the tool result.';
+    // Build a proper conversation context with all messages
+    const conversationText = history.map(msg => {
+      const role = msg.role === 'user' ? 'Human' : 'Assistant';
+      const content = typeof msg.content === 'string' ? msg.content : 
+                     (msg.content?.[0]?.content || JSON.stringify(msg.content));
+      return `${role}: ${content}`;
+    }).join('\n\n');
+    
+    return `${conversationText}\n\nPlease continue the conversation based on the above context.`;
   }
 
   private async buildEnhancedPrompt(
@@ -326,8 +323,6 @@ ${resourceDescriptions}`;
 
   async executeTool(toolName: string, arguments_: any, serverName?: string): Promise<any> {
     try {
-      console.log(`Executing tool: ${toolName}`);
-      
       // Parse MCP-style tool names (mcp__server__tool)
       let actualToolName = toolName;
       let targetServerName = serverName;
@@ -338,12 +333,10 @@ ${resourceDescriptions}`;
           // Extract server name and tool name from mcp__server__tool format
           targetServerName = parts[1];
           actualToolName = parts.slice(2).join('__'); // In case tool name contains underscores
-          console.log(`Parsed MCP tool: server=${targetServerName}, tool=${actualToolName}`);
         }
       }
       
       const result = await this.mcpService.callTool(actualToolName, arguments_, targetServerName);
-      console.log(`Tool execution completed: ${toolName}`);
       return result;
     } catch (error) {
       console.error(`Tool execution failed: ${toolName}`, error);
@@ -353,9 +346,7 @@ ${resourceDescriptions}`;
 
   async loadResource(uri: string, serverName?: string): Promise<any> {
     try {
-      console.log(`Loading resource: ${uri}`);
       const result = await this.mcpService.readResource(uri, serverName);
-      console.log(`Resource loaded: ${uri}`);
       return result;
     } catch (error) {
       console.error(`Resource loading failed: ${uri}`, error);
@@ -380,10 +371,8 @@ ${resourceDescriptions}`;
   }
 
   async disconnect(): Promise<void> {
-    console.log('Disconnecting Agent Service...');
     await this.mcpService.disconnect();
     this.isInitialized = false;
-    console.log('Agent Service disconnected');
   }
 
   // Convenience method for trading-specific enhanced prompts

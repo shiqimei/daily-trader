@@ -3,11 +3,11 @@ import 'dotenv/config';
 
 export interface MCPServerConfig {
   name: string;
-  command: string;
+  transport: 'stream-http' | 'stdio' | 'sse';
+  url?: string;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
-  transport?: 'stdio' | 'sse';
-  url?: string; // Required for SSE transport
 }
 
 export interface Config {
@@ -39,18 +39,13 @@ function getRequiredEnvVar(name: string): string {
 // Validate that we have either traditional AWS credentials or bearer token
 function validateAwsCredentials() {
   const hasTraditionalCreds = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
-  const hasBearerToken = process.env.AWS_BEARER_TOKEN_BEDROCK;
   
-  if (!hasTraditionalCreds && !hasBearerToken) {
+  if (!hasTraditionalCreds) {
     throw new Error(
       'Missing AWS credentials. Please provide either:\n' +
       '  - AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (recommended), or\n' +
       '  - AWS_BEARER_TOKEN_BEDROCK'
     );
-  }
-  
-  if (hasTraditionalCreds && hasBearerToken) {
-    console.warn('Both traditional AWS credentials and bearer token found. Using traditional credentials.');
   }
 }
 
@@ -60,34 +55,8 @@ validateAwsCredentials();
 // Default MCP servers configuration
 function getDefaultMCPServers(): MCPServerConfig[] {
   const servers: MCPServerConfig[] = [];
-  
-  // Example: File system MCP server
-  if (process.env.MCP_FILESYSTEM_SERVER_PATH) {
-    servers.push({
-      name: 'filesystem',
-      command: process.env.MCP_FILESYSTEM_SERVER_PATH,
-      args: ['/home/ubuntu/daily-trader'], // Allow access to current directory
-      transport: 'stdio',
-    });
-  }
-  
-  // Example: Web search MCP server
-  if (process.env.MCP_WEBSEARCH_SERVER_PATH) {
-    servers.push({
-      name: 'websearch',
-      command: 'node',
-      args: [process.env.MCP_WEBSEARCH_SERVER_PATH],
-      transport: 'stdio',
-      env: {
-        SEARCH_API_KEY: process.env.SEARCH_API_KEY || '',
-      },
-    });
-  }
-
-  // SSE MCP server for testing
   servers.push({
     name: 'context7-sse',
-    command: '', // Not used for SSE transport
     transport: 'sse',
     url: 'https://mcp.context7.com/sse',
   });

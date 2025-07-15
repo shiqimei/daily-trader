@@ -34,7 +34,6 @@ export class BedrockService {
         accessKeyId: config.aws.accessKeyId,
         secretAccessKey: config.aws.secretAccessKey,
       };
-      console.log('Using traditional AWS credentials for Bedrock authentication');
     } else if (config.aws.bearerToken) {
       // Bearer token authentication
       clientConfig.credentials = {

@@ -30,11 +30,8 @@ export class MCPClientService {
 
   async initialize(servers: MCPServerConfig[]): Promise<void> {
     if (this.isInitialized) {
-      console.log('MCP client service already initialized');
       return;
     }
-
-    console.log(`Initializing MCP client service with ${servers.length} servers...`);
 
     for (const serverConfig of servers) {
       try {
@@ -45,12 +42,9 @@ export class MCPClientService {
     }
 
     this.isInitialized = true;
-    console.log(`MCP client service initialized with ${this.clients.size} active connections`);
   }
 
   private async connectToServer(serverConfig: MCPServerConfig): Promise<void> {
-    console.log(`Connecting to MCP server: ${serverConfig.name}`);
-
     let transport;
 
     if (serverConfig.transport === 'sse') {
@@ -60,7 +54,6 @@ export class MCPClientService {
       }
       
       transport = new SSEClientTransport(new URL(serverConfig.url));
-      console.log(`Using SSE transport to connect to ${serverConfig.url}`);
     } else {
       // Default to stdio transport for local servers
       // Create clean environment object
@@ -79,7 +72,7 @@ export class MCPClientService {
       }
 
       transport = new StdioClientTransport({
-        command: serverConfig.command,
+        command: serverConfig.command ??'',
         args: serverConfig.args || [],
         env: cleanEnv,
       });
@@ -98,8 +91,6 @@ export class MCPClientService {
 
     await client.connect(transport);
     this.clients.set(serverConfig.name, client);
-    
-    console.log(`Connected to MCP server: ${serverConfig.name}`);
   }
 
   async listAllTools(): Promise<MCPTool[]> {
@@ -217,8 +208,6 @@ export class MCPClientService {
   }
 
   async disconnect(): Promise<void> {
-    console.log('Disconnecting from all MCP servers...');
-    
     for (const [serverName, client] of this.clients) {
       try {
         await client.close();
@@ -230,7 +219,6 @@ export class MCPClientService {
 
     this.clients.clear();
     this.isInitialized = false;
-    console.log('All MCP connections closed');
   }
 
   getConnectedServers(): string[] {

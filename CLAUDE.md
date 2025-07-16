@@ -114,3 +114,11 @@ Agent-centric trading bot that provides MCP (Model Context Protocol) tools to LL
 - Always update existing files directly instead of creating versioned copies
 - When fixing or improving code, modify the original file rather than creating alternatives
 - MCP tools should have descriptive, action-oriented names (e.g., `get_market_depth`, `place_limit_order`)
+
+## MCP Server stdio Guidelines
+
+- **NEVER use console.log() or console.error()** in MCP servers using stdio transport
+- stdio transport uses stdout/stderr for protocol communication
+- Any console output will corrupt the JSON-RPC messages
+- Use the MCP server's built-in error handling instead
+- For debugging, write to a file or use a separate logging mechanism

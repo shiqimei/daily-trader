@@ -11,7 +11,8 @@
     "dev:watch": "nodemon --exec tsx src/main.ts",
     "test": "tsx src/main.ts",
     "clean": "rm -rf dist",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "mcp:inspect": "npx @modelcontextprotocol/inspector@latest"
   },
   "keywords": [
     "ai",

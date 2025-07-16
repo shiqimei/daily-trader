@@ -39,7 +39,7 @@ function getRequiredEnvVar(name: string): string {
 // Validate that we have either traditional AWS credentials or bearer token
 function validateAwsCredentials() {
   const hasTraditionalCreds = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
-  
+
   if (!hasTraditionalCreds) {
     throw new Error(
       'Missing AWS credentials. Please provide either:\n' +
@@ -60,7 +60,7 @@ function getDefaultMCPServers(): MCPServerConfig[] {
     transport: 'sse',
     url: 'https://mcp.context7.com/sse',
   });
-  
+
   return servers;
 }
 

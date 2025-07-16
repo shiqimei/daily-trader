@@ -1,4 +1,4 @@
-import { chatStream } from './chat.js';
+import { chatStream } from './chat';
 
 async function main() {
   const mcpServers = {

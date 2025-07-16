@@ -1,6 +1,6 @@
-import { config, MCPServerConfig } from '../config.js';
-import { BedrockService } from './bedrockService.js';
-import { MCPClientService, MCPResource, MCPTool } from './mcpClientService.js';
+import { config, MCPServerConfig } from '../config';
+import { BedrockService } from './bedrockService';
+import { MCPClientService, MCPResource, MCPTool } from './mcpClientService';
 
 export interface AgentPromptOptions {
   includeAvailableTools?: boolean;

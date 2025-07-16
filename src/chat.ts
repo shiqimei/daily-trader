@@ -1,5 +1,5 @@
-import { MCPServerConfig } from './config.js';
-import { AgentService } from './services/agentService.js';
+import { MCPServerConfig } from './config';
+import { AgentService } from './services/agentService';
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';

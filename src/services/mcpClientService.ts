@@ -1,13 +1,13 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio';
 import {
   CallToolResult,
   ListResourcesResult,
   ListToolsResult,
   ReadResourceResult
-} from '@modelcontextprotocol/sdk/types.js';
-import { MCPServerConfig } from '../config.js';
+} from '@modelcontextprotocol/sdk/types';
+import { MCPServerConfig } from '../config';
 
 export interface MCPTool {
   name: string;

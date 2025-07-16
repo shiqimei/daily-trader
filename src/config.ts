@@ -71,7 +71,7 @@ export const config: Config = {
     bearerToken: process.env.AWS_BEARER_TOKEN_BEDROCK,
     region: process.env.AWS_REGION || 'us-east-1',
     models: {
-      claudeSonnet: process.env.BEDROCK_CLAUDE_SONNET_MODEL_ID || 'apac.anthropic.claude-sonnet-4-20250514-v1:0',
+      claudeSonnet: process.env.BEDROCK_CLAUDE_SONNET_MODEL_ID || 'arn:aws:bedrock:ap-northeast-1:544018208436:inference-profile/apac.anthropic.claude-sonnet-4-20250514-v1:0',
     },
   },
   mcp: {

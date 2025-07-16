@@ -11,8 +11,8 @@ async function main() {
       },
       calculator: {
         transport: 'stdio' as const,
-        command: 'bun',
-        args: ['./src/mcpServers/calculator.ts']
+        command: 'npx',
+        args: ['-y', 'tsx', './src/mcpServers/calculator.ts']
       }
     }
   }

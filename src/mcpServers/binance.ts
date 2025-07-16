@@ -7,6 +7,9 @@ import {
   Tool
 } from '@modelcontextprotocol/sdk/types'
 import crypto from 'crypto'
+import dotenv from 'dotenv'
+
+dotenv.config()
 
 type Interval = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d' | '1w' | '1M'
 
@@ -44,7 +47,7 @@ async function makeRequest(
   if (requireAuth) {
     const signature = createSignature(queryString, config.apiSecret)
     const signedQuery = `${queryString}&signature=${signature}`
-    
+
     if (method === 'GET' || method === 'DELETE') {
       url += `?${signedQuery}`
     } else {
@@ -105,8 +108,16 @@ const binanceTools: Tool[] = [
       type: 'object',
       properties: {
         symbol: { type: 'string', description: 'Trading pair symbol' },
-        interval: { type: 'string', enum: ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'], description: 'Kline interval' },
-        limit: { type: 'number', description: 'Number of klines to return (max 1500)', default: 100 }
+        interval: {
+          type: 'string',
+          enum: ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w', '1M'],
+          description: 'Kline interval'
+        },
+        limit: {
+          type: 'number',
+          description: 'Number of klines to return (max 1500)',
+          default: 100
+        }
       },
       required: ['symbol', 'interval']
     }
@@ -130,7 +141,11 @@ const binanceTools: Tool[] = [
       type: 'object',
       properties: {
         symbol: { type: 'string', description: 'Trading pair symbol' },
-        limit: { type: 'number', description: 'Depth limit (5, 10, 20, 50, 100, 500, 1000)', default: 20 }
+        limit: {
+          type: 'number',
+          description: 'Depth limit (5, 10, 20, 50, 100, 500, 1000)',
+          default: 20
+        }
       },
       required: ['symbol']
     }
@@ -285,7 +300,10 @@ const binanceTools: Tool[] = [
       properties: {
         symbol: { type: 'string', description: 'Trading pair symbol' },
         quantity: { type: 'number', description: 'Position size in base asset' },
-        price: { type: 'number', description: 'Limit price (optional, market order if not provided)' }
+        price: {
+          type: 'number',
+          description: 'Limit price (optional, market order if not provided)'
+        }
       },
       required: ['symbol', 'quantity']
     }
@@ -298,7 +316,10 @@ const binanceTools: Tool[] = [
       properties: {
         symbol: { type: 'string', description: 'Trading pair symbol' },
         quantity: { type: 'number', description: 'Position size in base asset' },
-        price: { type: 'number', description: 'Limit price (optional, market order if not provided)' }
+        price: {
+          type: 'number',
+          description: 'Limit price (optional, market order if not provided)'
+        }
       },
       required: ['symbol', 'quantity']
     }
@@ -373,7 +394,11 @@ const binanceTools: Tool[] = [
       properties: {
         symbol: { type: 'string', description: 'Trading pair symbol' },
         triggerPrice: { type: 'number', description: 'Stop trigger price' },
-        closePercentage: { type: 'number', description: 'Percentage to close (1-100)', default: 100 }
+        closePercentage: {
+          type: 'number',
+          description: 'Percentage to close (1-100)',
+          default: 100
+        }
       },
       required: ['symbol', 'triggerPrice']
     }
@@ -386,7 +411,11 @@ const binanceTools: Tool[] = [
       properties: {
         symbol: { type: 'string', description: 'Trading pair symbol' },
         triggerPrice: { type: 'number', description: 'Take profit trigger price' },
-        closePercentage: { type: 'number', description: 'Percentage to close (1-100)', default: 100 }
+        closePercentage: {
+          type: 'number',
+          description: 'Percentage to close (1-100)',
+          default: 100
+        }
       },
       required: ['symbol', 'triggerPrice']
     }
@@ -433,7 +462,10 @@ const binanceTools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        symbol: { type: 'string', description: 'Trading pair symbol (optional, cancels all if not provided)' }
+        symbol: {
+          type: 'string',
+          description: 'Trading pair symbol (optional, cancels all if not provided)'
+        }
       }
     }
   },
@@ -467,17 +499,17 @@ function getConfig(): BinanceConfig {
   const apiKey = process.env.BINANCE_FUTURES_API_KEY
   const apiSecret = process.env.BINANCE_FUTURES_API_SECRET
   const isTestnet = process.env.BINANCE_TESTNET === 'true'
-  
+
   if (!apiKey || !apiSecret) {
-    throw new Error('BINANCE_FUTURES_API_KEY and BINANCE_FUTURES_API_SECRET environment variables are required')
+    throw new Error(
+      'BINANCE_FUTURES_API_KEY and BINANCE_FUTURES_API_SECRET environment variables are required'
+    )
   }
-  
+
   return {
     apiKey,
     apiSecret,
-    baseUrl: isTestnet 
-      ? 'https://testnet.binancefuture.com' 
-      : 'https://fapi.binance.com'
+    baseUrl: isTestnet ? 'https://testnet.binancefuture.com' : 'https://fapi.binance.com'
   }
 }
 
@@ -490,7 +522,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async request => {
   const { name, arguments: args } = request.params
   const config = getConfig()
-  
+
   try {
     switch (name) {
       // Common Utils
@@ -498,78 +530,101 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         const { usdtAmount, symbol } = args as { usdtAmount: number; symbol: string }
         const ticker = await makeRequest(config, '/fapi/v2/ticker/price', { symbol })
         const price = parseFloat(ticker.price)
-        
+
         // Get symbol info for precision
         const exchangeInfo = await makeRequest(config, '/fapi/v1/exchangeInfo')
         const symbolInfo = exchangeInfo.symbols.find((s: any) => s.symbol === symbol)
         const quantityPrecision = symbolInfo?.quantityPrecision || 8
-        
+
         const quantity = usdtAmount / price
-        const roundedQuantity = Math.floor(quantity * Math.pow(10, quantityPrecision)) / Math.pow(10, quantityPrecision)
-        
+        const roundedQuantity =
+          Math.floor(quantity * Math.pow(10, quantityPrecision)) / Math.pow(10, quantityPrecision)
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              usdtAmount,
-              symbol,
-              currentPrice: price,
-              positionSize: roundedQuantity,
-              quantityPrecision
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  usdtAmount,
+                  symbol,
+                  currentPrice: price,
+                  positionSize: roundedQuantity,
+                  quantityPrecision
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'get_server_time': {
         const result = await makeRequest(config, '/fapi/v1/time')
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              serverTime: new Date(result.serverTime).toISOString(),
-              serverTimeMs: result.serverTime,
-              localTime: new Date().toISOString()
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  serverTime: new Date(result.serverTime).toISOString(),
+                  serverTimeMs: result.serverTime,
+                  localTime: new Date().toISOString()
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       // Market Data
       case 'get_klines': {
-        const { symbol, interval, limit = 100 } = args as { symbol: string; interval: Interval; limit?: number }
+        const {
+          symbol,
+          interval,
+          limit = 100
+        } = args as { symbol: string; interval: Interval; limit?: number }
         const klines = await makeRequest(config, '/fapi/v1/klines', { symbol, interval, limit })
-        
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              symbol,
-              interval,
-              count: klines.length,
-              klines: klines.map((k: any[]) => ({
-                openTime: new Date(k[0]).toISOString(),
-                open: k[1],
-                high: k[2],
-                low: k[3],
-                close: k[4],
-                volume: k[5],
-                closeTime: new Date(k[6]).toISOString(),
-                quoteVolume: k[7],
-                trades: k[8],
-                takerBuyBaseVolume: k[9],
-                takerBuyQuoteVolume: k[10]
-              }))
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  symbol,
+                  interval,
+                  count: klines.length,
+                  klines: klines.map((k: any[]) => ({
+                    openTime: new Date(k[0]).toISOString(),
+                    open: k[1],
+                    high: k[2],
+                    low: k[3],
+                    close: k[4],
+                    volume: k[5],
+                    closeTime: new Date(k[6]).toISOString(),
+                    quoteVolume: k[7],
+                    trades: k[8],
+                    takerBuyBaseVolume: k[9],
+                    takerBuyQuoteVolume: k[10]
+                  }))
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'get_klines_all_intervals': {
         const { symbol, limit = 20 } = args as { symbol: string; limit?: number }
         const intervals: Interval[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
         const results: any = {}
-        
+
         for (const interval of intervals) {
           const klines = await makeRequest(config, '/fapi/v1/klines', { symbol, interval, limit })
           results[interval] = klines.map((k: any[]) => ({
@@ -581,327 +636,438 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             volume: k[5]
           }))
         }
-        
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              symbol,
-              intervals: results
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  symbol,
+                  intervals: results
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'get_orderbook': {
         const { symbol, limit = 20 } = args as { symbol: string; limit?: number }
         const orderbook = await makeRequest(config, '/fapi/v1/depth', { symbol, limit })
-        
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              symbol,
-              lastUpdateId: orderbook.lastUpdateId,
-              bids: orderbook.bids.slice(0, 10),
-              asks: orderbook.asks.slice(0, 10),
-              bidAskSpread: orderbook.asks.length > 0 && orderbook.bids.length > 0 
-                ? parseFloat(orderbook.asks[0][0]) - parseFloat(orderbook.bids[0][0])
-                : 0
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  symbol,
+                  lastUpdateId: orderbook.lastUpdateId,
+                  bids: orderbook.bids.slice(0, 10),
+                  asks: orderbook.asks.slice(0, 10),
+                  bidAskSpread:
+                    orderbook.asks.length > 0 && orderbook.bids.length > 0
+                      ? parseFloat(orderbook.asks[0][0]) - parseFloat(orderbook.bids[0][0])
+                      : 0
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'get_ticker': {
         const { symbol } = args as { symbol: string }
         const ticker = await makeRequest(config, '/fapi/v2/ticker/price', { symbol })
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(ticker, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(ticker, null, 2)
+            }
+          ]
         }
       }
-      
+
       case 'get_ticker_24hr': {
         const { symbol } = args as { symbol: string }
         const ticker = await makeRequest(config, '/fapi/v1/ticker/24hr', { symbol })
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              symbol: ticker.symbol,
-              priceChange: ticker.priceChange,
-              priceChangePercent: ticker.priceChangePercent,
-              lastPrice: ticker.lastPrice,
-              highPrice: ticker.highPrice,
-              lowPrice: ticker.lowPrice,
-              volume: ticker.volume,
-              quoteVolume: ticker.quoteVolume,
-              openPrice: ticker.openPrice,
-              openTime: new Date(ticker.openTime).toISOString(),
-              closeTime: new Date(ticker.closeTime).toISOString()
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  symbol: ticker.symbol,
+                  priceChange: ticker.priceChange,
+                  priceChangePercent: ticker.priceChangePercent,
+                  lastPrice: ticker.lastPrice,
+                  highPrice: ticker.highPrice,
+                  lowPrice: ticker.lowPrice,
+                  volume: ticker.volume,
+                  quoteVolume: ticker.quoteVolume,
+                  openPrice: ticker.openPrice,
+                  openTime: new Date(ticker.openTime).toISOString(),
+                  closeTime: new Date(ticker.closeTime).toISOString()
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       // Futures Specific Data
       case 'get_funding_rate': {
         const { symbol } = args as { symbol: string }
         const result = await makeRequest(config, '/fapi/v1/fundingRate', { symbol, limit: 1 })
         const current = result[0] || {}
-        
+
         // Also get mark price for next funding time
         const markPrice = await makeRequest(config, '/fapi/v1/premiumIndex', { symbol })
-        
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              symbol: current.symbol,
-              fundingRate: current.fundingRate,
-              fundingTime: current.fundingTime ? new Date(current.fundingTime).toISOString() : null,
-              nextFundingTime: markPrice.nextFundingTime ? new Date(markPrice.nextFundingTime).toISOString() : null,
-              markPrice: markPrice.markPrice,
-              indexPrice: markPrice.indexPrice
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  symbol: current.symbol,
+                  fundingRate: current.fundingRate,
+                  fundingTime: current.fundingTime
+                    ? new Date(current.fundingTime).toISOString()
+                    : null,
+                  nextFundingTime: markPrice.nextFundingTime
+                    ? new Date(markPrice.nextFundingTime).toISOString()
+                    : null,
+                  markPrice: markPrice.markPrice,
+                  indexPrice: markPrice.indexPrice
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'get_funding_history': {
         const { symbol, limit = 100 } = args as { symbol: string; limit?: number }
         const history = await makeRequest(config, '/fapi/v1/fundingRate', { symbol, limit })
-        
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              symbol,
-              count: history.length,
-              history: history.map((h: any) => ({
-                fundingTime: new Date(h.fundingTime).toISOString(),
-                fundingRate: h.fundingRate
-              }))
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  symbol,
+                  count: history.length,
+                  history: history.map((h: any) => ({
+                    fundingTime: new Date(h.fundingTime).toISOString(),
+                    fundingRate: h.fundingRate
+                  }))
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'get_open_interest': {
         const { symbol } = args as { symbol: string }
         const openInterest = await makeRequest(config, '/fapi/v1/openInterest', { symbol })
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              symbol: openInterest.symbol,
-              openInterest: openInterest.openInterest,
-              time: new Date(openInterest.time).toISOString()
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  symbol: openInterest.symbol,
+                  openInterest: openInterest.openInterest,
+                  time: new Date(openInterest.time).toISOString()
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'get_mark_price': {
         const { symbol } = args as { symbol: string }
         const markPrice = await makeRequest(config, '/fapi/v1/premiumIndex', { symbol })
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              symbol: markPrice.symbol,
-              markPrice: markPrice.markPrice,
-              indexPrice: markPrice.indexPrice,
-              fundingRate: markPrice.lastFundingRate,
-              nextFundingTime: new Date(markPrice.nextFundingTime).toISOString(),
-              time: new Date(markPrice.time).toISOString()
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  symbol: markPrice.symbol,
+                  markPrice: markPrice.markPrice,
+                  indexPrice: markPrice.indexPrice,
+                  fundingRate: markPrice.lastFundingRate,
+                  nextFundingTime: new Date(markPrice.nextFundingTime).toISOString(),
+                  time: new Date(markPrice.time).toISOString()
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'get_exchange_info': {
         const { symbol } = args as { symbol?: string }
         const exchangeInfo = await makeRequest(config, '/fapi/v1/exchangeInfo')
-        
+
         if (symbol) {
           const symbolInfo = exchangeInfo.symbols.find((s: any) => s.symbol === symbol)
           return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify(symbolInfo || { error: `Symbol ${symbol} not found` }, null, 2)
-            }]
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(symbolInfo || { error: `Symbol ${symbol} not found` }, null, 2)
+              }
+            ]
           }
         }
-        
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              timezone: exchangeInfo.timezone,
-              serverTime: new Date(exchangeInfo.serverTime).toISOString(),
-              rateLimits: exchangeInfo.rateLimits,
-              totalSymbols: exchangeInfo.symbols.length,
-              symbols: exchangeInfo.symbols.slice(0, 10) // Show first 10 symbols
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  timezone: exchangeInfo.timezone,
+                  serverTime: new Date(exchangeInfo.serverTime).toISOString(),
+                  rateLimits: exchangeInfo.rateLimits,
+                  totalSymbols: exchangeInfo.symbols.length,
+                  symbols: exchangeInfo.symbols.slice(0, 10) // Show first 10 symbols
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       // Account Data
       case 'get_account': {
         const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              totalWalletBalance: account.totalWalletBalance,
-              totalUnrealizedProfit: account.totalUnrealizedProfit,
-              totalMarginBalance: account.totalMarginBalance,
-              availableBalance: account.availableBalance,
-              totalPositionInitialMargin: account.totalPositionInitialMargin,
-              totalOpenOrderInitialMargin: account.totalOpenOrderInitialMargin,
-              totalCrossUnPnl: account.totalCrossUnPnl,
-              totalCrossWalletBalance: account.totalCrossWalletBalance,
-              updateTime: new Date(account.updateTime).toISOString(),
-              positions: account.positions.filter((p: any) => parseFloat(p.positionAmt) !== 0),
-              assets: account.assets.filter((a: any) => parseFloat(a.walletBalance) > 0)
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  totalWalletBalance: account.totalWalletBalance,
+                  totalUnrealizedProfit: account.totalUnrealizedProfit,
+                  totalMarginBalance: account.totalMarginBalance,
+                  availableBalance: account.availableBalance,
+                  totalPositionInitialMargin: account.totalPositionInitialMargin,
+                  totalOpenOrderInitialMargin: account.totalOpenOrderInitialMargin,
+                  totalCrossUnPnl: account.totalCrossUnPnl,
+                  totalCrossWalletBalance: account.totalCrossWalletBalance,
+                  updateTime: new Date(account.updateTime).toISOString(),
+                  positions: account.positions.filter((p: any) => parseFloat(p.positionAmt) !== 0),
+                  assets: account.assets.filter((a: any) => parseFloat(a.walletBalance) > 0)
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'get_positions': {
         const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
-        const activePositions = account.positions.filter((p: any) => parseFloat(p.positionAmt) !== 0)
-        
+        const activePositions = account.positions.filter(
+          (p: any) => parseFloat(p.positionAmt) !== 0
+        )
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              count: activePositions.length,
-              positions: activePositions.map((p: any) => ({
-                symbol: p.symbol,
-                side: parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT',
-                positionAmt: p.positionAmt,
-                entryPrice: p.entryPrice,
-                markPrice: p.markPrice,
-                unrealizedProfit: p.unrealizedProfit,
-                isolatedWallet: p.isolatedWallet,
-                notional: p.notional,
-                leverage: p.leverage,
-                marginType: p.marginType,
-                liquidationPrice: p.liquidationPrice,
-                updateTime: new Date(p.updateTime).toISOString()
-              }))
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  count: activePositions.length,
+                  positions: activePositions.map((p: any) => ({
+                    symbol: p.symbol,
+                    side: parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT',
+                    positionAmt: p.positionAmt,
+                    entryPrice: p.entryPrice,
+                    markPrice: p.markPrice,
+                    unrealizedProfit: p.unrealizedProfit,
+                    isolatedWallet: p.isolatedWallet,
+                    notional: p.notional,
+                    leverage: p.leverage,
+                    marginType: p.marginType,
+                    liquidationPrice: p.liquidationPrice,
+                    updateTime: new Date(p.updateTime).toISOString()
+                  }))
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'get_open_orders': {
         const { symbol } = args as { symbol?: string }
         const params: any = {}
         if (symbol) params.symbol = symbol
-        
+
         const orders = await makeRequest(config, '/fapi/v1/openOrders', params, 'GET', true)
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              count: orders.length,
-              orders: orders.map((o: any) => ({
-                symbol: o.symbol,
-                orderId: o.orderId,
-                clientOrderId: o.clientOrderId,
-                type: o.type,
-                side: o.side,
-                price: o.price,
-                origQty: o.origQty,
-                executedQty: o.executedQty,
-                status: o.status,
-                timeInForce: o.timeInForce,
-                time: new Date(o.time).toISOString(),
-                updateTime: new Date(o.updateTime).toISOString()
-              }))
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  count: orders.length,
+                  orders: orders.map((o: any) => ({
+                    symbol: o.symbol,
+                    orderId: o.orderId,
+                    clientOrderId: o.clientOrderId,
+                    type: o.type,
+                    side: o.side,
+                    price: o.price,
+                    origQty: o.origQty,
+                    executedQty: o.executedQty,
+                    status: o.status,
+                    timeInForce: o.timeInForce,
+                    time: new Date(o.time).toISOString(),
+                    updateTime: new Date(o.updateTime).toISOString()
+                  }))
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'get_trades': {
         const { symbol, limit = 50 } = args as { symbol: string; limit?: number }
-        const trades = await makeRequest(config, '/fapi/v1/userTrades', { symbol, limit }, 'GET', true)
-        
+        const trades = await makeRequest(
+          config,
+          '/fapi/v1/userTrades',
+          { symbol, limit },
+          'GET',
+          true
+        )
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              symbol,
-              count: trades.length,
-              trades: trades.map((t: any) => ({
-                time: new Date(t.time).toISOString(),
-                symbol: t.symbol,
-                id: t.id,
-                orderId: t.orderId,
-                side: t.side,
-                price: t.price,
-                qty: t.qty,
-                realizedPnl: t.realizedPnl,
-                commission: t.commission,
-                commissionAsset: t.commissionAsset,
-                buyer: t.buyer,
-                maker: t.maker
-              }))
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  symbol,
+                  count: trades.length,
+                  trades: trades.map((t: any) => ({
+                    time: new Date(t.time).toISOString(),
+                    symbol: t.symbol,
+                    id: t.id,
+                    orderId: t.orderId,
+                    side: t.side,
+                    price: t.price,
+                    qty: t.qty,
+                    realizedPnl: t.realizedPnl,
+                    commission: t.commission,
+                    commissionAsset: t.commissionAsset,
+                    buyer: t.buyer,
+                    maker: t.maker
+                  }))
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       // Leverage Management
       case 'get_current_leverage': {
         const { symbol } = args as { symbol: string }
         const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
         const position = account.positions.find((p: any) => p.symbol === symbol)
-        
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              symbol,
-              leverage: position?.leverage || 'No position found',
-              marginType: position?.marginType || 'N/A'
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  symbol,
+                  leverage: position?.leverage || 'No position found',
+                  marginType: position?.marginType || 'N/A'
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'set_leverage': {
         const { symbol, leverage } = args as { symbol: string; leverage: number }
         if (leverage < 1 || leverage > 125) {
           throw new Error('Leverage must be between 1 and 125')
         }
-        
-        const result = await makeRequest(config, '/fapi/v1/leverage', { symbol, leverage }, 'POST', true)
+
+        const result = await makeRequest(
+          config,
+          '/fapi/v1/leverage',
+          { symbol, leverage },
+          'POST',
+          true
+        )
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              symbol: result.symbol,
-              leverage: result.leverage,
-              maxNotionalValue: result.maxNotionalValue,
-              success: true
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  symbol: result.symbol,
+                  leverage: result.leverage,
+                  maxNotionalValue: result.maxNotionalValue,
+                  success: true
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       // Position Management
       case 'open_long': {
-        const { symbol, quantity, price } = args as { symbol: string; quantity: number; price?: number }
+        const { symbol, quantity, price } = args as {
+          symbol: string
+          quantity: number
+          price?: number
+        }
         const params: any = {
           symbol,
           side: 'BUY',
@@ -910,31 +1076,41 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           timeInForce: price ? 'GTC' : undefined
         }
         if (price) params.price = price
-        
+
         const order = await makeRequest(config, '/fapi/v1/order', params, 'POST', true)
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'OPEN_LONG',
-              symbol,
-              quantity,
-              orderType: order.type,
-              price: order.price,
-              order: {
-                orderId: order.orderId,
-                status: order.status,
-                executedQty: order.executedQty,
-                avgPrice: order.avgPrice || order.price,
-                time: new Date(order.updateTime).toISOString()
-              }
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'OPEN_LONG',
+                  symbol,
+                  quantity,
+                  orderType: order.type,
+                  price: order.price,
+                  order: {
+                    orderId: order.orderId,
+                    status: order.status,
+                    executedQty: order.executedQty,
+                    avgPrice: order.avgPrice || order.price,
+                    time: new Date(order.updateTime).toISOString()
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'open_short': {
-        const { symbol, quantity, price } = args as { symbol: string; quantity: number; price?: number }
+        const { symbol, quantity, price } = args as {
+          symbol: string
+          quantity: number
+          price?: number
+        }
         const params: any = {
           symbol,
           side: 'SELL',
@@ -943,171 +1119,229 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           timeInForce: price ? 'GTC' : undefined
         }
         if (price) params.price = price
-        
+
         const order = await makeRequest(config, '/fapi/v1/order', params, 'POST', true)
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'OPEN_SHORT',
-              symbol,
-              quantity,
-              orderType: order.type,
-              price: order.price,
-              order: {
-                orderId: order.orderId,
-                status: order.status,
-                executedQty: order.executedQty,
-                avgPrice: order.avgPrice || order.price,
-                time: new Date(order.updateTime).toISOString()
-              }
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'OPEN_SHORT',
+                  symbol,
+                  quantity,
+                  orderType: order.type,
+                  price: order.price,
+                  order: {
+                    orderId: order.orderId,
+                    status: order.status,
+                    executedQty: order.executedQty,
+                    avgPrice: order.avgPrice || order.price,
+                    time: new Date(order.updateTime).toISOString()
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'close_position': {
         const { symbol, percentage = 100 } = args as { symbol: string; percentage?: number }
         if (percentage < 1 || percentage > 100) {
           throw new Error('Percentage must be between 1 and 100')
         }
-        
+
         const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
-        const position = account.positions.find((p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0)
-        
+        const position = account.positions.find(
+          (p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0
+        )
+
         if (!position) {
           throw new Error(`No open position found for ${symbol}`)
         }
-        
+
         const positionAmt = parseFloat(position.positionAmt)
         const closeQty = Math.abs(positionAmt * (percentage / 100))
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
-        
-        const order = await makeRequest(config, '/fapi/v1/order', {
-          symbol,
-          side,
-          quantity: closeQty,
-          type: 'MARKET'
-        }, 'POST', true)
-        
+
+        const order = await makeRequest(
+          config,
+          '/fapi/v1/order',
+          {
+            symbol,
+            side,
+            quantity: closeQty,
+            type: 'MARKET'
+          },
+          'POST',
+          true
+        )
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'CLOSE_POSITION',
-              symbol,
-              percentage,
-              closeQty,
-              side,
-              order: {
-                orderId: order.orderId,
-                status: order.status,
-                executedQty: order.executedQty,
-                avgPrice: order.avgPrice,
-                time: new Date(order.updateTime).toISOString()
-              }
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'CLOSE_POSITION',
+                  symbol,
+                  percentage,
+                  closeQty,
+                  side,
+                  order: {
+                    orderId: order.orderId,
+                    status: order.status,
+                    executedQty: order.executedQty,
+                    avgPrice: order.avgPrice,
+                    time: new Date(order.updateTime).toISOString()
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'close_position_limit': {
-        const { symbol, price, percentage = 100 } = args as { symbol: string; price: number; percentage?: number }
+        const {
+          symbol,
+          price,
+          percentage = 100
+        } = args as { symbol: string; price: number; percentage?: number }
         if (percentage < 1 || percentage > 100) {
           throw new Error('Percentage must be between 1 and 100')
         }
-        
+
         const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
-        const position = account.positions.find((p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0)
-        
+        const position = account.positions.find(
+          (p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0
+        )
+
         if (!position) {
           throw new Error(`No open position found for ${symbol}`)
         }
-        
+
         const positionAmt = parseFloat(position.positionAmt)
         const closeQty = Math.abs(positionAmt * (percentage / 100))
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
-        
-        const order = await makeRequest(config, '/fapi/v1/order', {
-          symbol,
-          side,
-          quantity: closeQty,
-          type: 'LIMIT',
-          timeInForce: 'GTC',
-          price
-        }, 'POST', true)
-        
+
+        const order = await makeRequest(
+          config,
+          '/fapi/v1/order',
+          {
+            symbol,
+            side,
+            quantity: closeQty,
+            type: 'LIMIT',
+            timeInForce: 'GTC',
+            price
+          },
+          'POST',
+          true
+        )
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'CLOSE_POSITION_LIMIT',
-              symbol,
-              price,
-              percentage,
-              closeQty,
-              side,
-              order: {
-                orderId: order.orderId,
-                status: order.status,
-                price: order.price,
-                time: new Date(order.updateTime).toISOString()
-              }
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'CLOSE_POSITION_LIMIT',
+                  symbol,
+                  price,
+                  percentage,
+                  closeQty,
+                  side,
+                  order: {
+                    orderId: order.orderId,
+                    status: order.status,
+                    price: order.price,
+                    time: new Date(order.updateTime).toISOString()
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'reverse_position': {
         const { symbol } = args as { symbol: string }
         const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
-        const position = account.positions.find((p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0)
-        
+        const position = account.positions.find(
+          (p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0
+        )
+
         if (!position) {
           throw new Error(`No open position found for ${symbol}`)
         }
-        
+
         const positionAmt = parseFloat(position.positionAmt)
         const reverseQty = Math.abs(positionAmt) * 2
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
-        
-        const order = await makeRequest(config, '/fapi/v1/order', {
-          symbol,
-          side,
-          quantity: reverseQty,
-          type: 'MARKET'
-        }, 'POST', true)
-        
+
+        const order = await makeRequest(
+          config,
+          '/fapi/v1/order',
+          {
+            symbol,
+            side,
+            quantity: reverseQty,
+            type: 'MARKET'
+          },
+          'POST',
+          true
+        )
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'REVERSE_POSITION',
-              symbol,
-              originalPosition: positionAmt,
-              reverseQty,
-              side,
-              order: {
-                orderId: order.orderId,
-                status: order.status,
-                executedQty: order.executedQty,
-                avgPrice: order.avgPrice,
-                time: new Date(order.updateTime).toISOString()
-              }
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'REVERSE_POSITION',
+                  symbol,
+                  originalPosition: positionAmt,
+                  reverseQty,
+                  side,
+                  order: {
+                    orderId: order.orderId,
+                    status: order.status,
+                    executedQty: order.executedQty,
+                    avgPrice: order.avgPrice,
+                    time: new Date(order.updateTime).toISOString()
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'increase_position': {
-        const { symbol, quantity, price } = args as { symbol: string; quantity: number; price?: number }
+        const { symbol, quantity, price } = args as {
+          symbol: string
+          quantity: number
+          price?: number
+        }
         const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
-        const position = account.positions.find((p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0)
-        
+        const position = account.positions.find(
+          (p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0
+        )
+
         if (!position) {
           throw new Error(`No open position found for ${symbol}`)
         }
-        
+
         const side = parseFloat(position.positionAmt) > 0 ? 'BUY' : 'SELL'
         const params: any = {
           symbol,
@@ -1117,48 +1351,60 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           timeInForce: price ? 'GTC' : undefined
         }
         if (price) params.price = price
-        
+
         const order = await makeRequest(config, '/fapi/v1/order', params, 'POST', true)
-        
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'INCREASE_POSITION',
-              symbol,
-              quantity,
-              side,
-              orderType: order.type,
-              price: order.price,
-              order: {
-                orderId: order.orderId,
-                status: order.status,
-                executedQty: order.executedQty,
-                avgPrice: order.avgPrice || order.price,
-                time: new Date(order.updateTime).toISOString()
-              }
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'INCREASE_POSITION',
+                  symbol,
+                  quantity,
+                  side,
+                  orderType: order.type,
+                  price: order.price,
+                  order: {
+                    orderId: order.orderId,
+                    status: order.status,
+                    executedQty: order.executedQty,
+                    avgPrice: order.avgPrice || order.price,
+                    time: new Date(order.updateTime).toISOString()
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'reduce_position': {
-        const { symbol, percentage, price } = args as { symbol: string; percentage: number; price?: number }
+        const { symbol, percentage, price } = args as {
+          symbol: string
+          percentage: number
+          price?: number
+        }
         if (percentage < 1 || percentage > 100) {
           throw new Error('Percentage must be between 1 and 100')
         }
-        
+
         const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
-        const position = account.positions.find((p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0)
-        
+        const position = account.positions.find(
+          (p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0
+        )
+
         if (!position) {
           throw new Error(`No open position found for ${symbol}`)
         }
-        
+
         const positionAmt = parseFloat(position.positionAmt)
         const reduceQty = Math.abs(positionAmt * (percentage / 100))
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
-        
+
         const params: any = {
           symbol,
           side,
@@ -1167,294 +1413,397 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           timeInForce: price ? 'GTC' : undefined
         }
         if (price) params.price = price
-        
+
         const order = await makeRequest(config, '/fapi/v1/order', params, 'POST', true)
-        
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'REDUCE_POSITION',
-              symbol,
-              percentage,
-              reduceQty,
-              side,
-              orderType: order.type,
-              price: order.price,
-              order: {
-                orderId: order.orderId,
-                status: order.status,
-                executedQty: order.executedQty,
-                avgPrice: order.avgPrice || order.price,
-                time: new Date(order.updateTime).toISOString()
-              }
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'REDUCE_POSITION',
+                  symbol,
+                  percentage,
+                  reduceQty,
+                  side,
+                  orderType: order.type,
+                  price: order.price,
+                  order: {
+                    orderId: order.orderId,
+                    status: order.status,
+                    executedQty: order.executedQty,
+                    avgPrice: order.avgPrice || order.price,
+                    time: new Date(order.updateTime).toISOString()
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'set_stop_loss': {
-        const { symbol, triggerPrice, closePercentage = 100 } = args as { symbol: string; triggerPrice: number; closePercentage?: number }
+        const {
+          symbol,
+          triggerPrice,
+          closePercentage = 100
+        } = args as { symbol: string; triggerPrice: number; closePercentage?: number }
         if (closePercentage < 1 || closePercentage > 100) {
           throw new Error('Close percentage must be between 1 and 100')
         }
-        
+
         const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
-        const position = account.positions.find((p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0)
-        
+        const position = account.positions.find(
+          (p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0
+        )
+
         if (!position) {
           throw new Error(`No open position found for ${symbol}`)
         }
-        
+
         const positionAmt = parseFloat(position.positionAmt)
         const stopQty = Math.abs(positionAmt * (closePercentage / 100))
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
-        
-        const order = await makeRequest(config, '/fapi/v1/order', {
-          symbol,
-          side,
-          quantity: stopQty,
-          type: 'STOP_MARKET',
-          stopPrice: triggerPrice
-        }, 'POST', true)
-        
+
+        const order = await makeRequest(
+          config,
+          '/fapi/v1/order',
+          {
+            symbol,
+            side,
+            quantity: stopQty,
+            type: 'STOP_MARKET',
+            stopPrice: triggerPrice
+          },
+          'POST',
+          true
+        )
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'SET_STOP_LOSS',
-              symbol,
-              triggerPrice,
-              closePercentage,
-              stopQty,
-              side,
-              order: {
-                orderId: order.orderId,
-                status: order.status,
-                stopPrice: order.stopPrice,
-                time: new Date(order.updateTime).toISOString()
-              }
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'SET_STOP_LOSS',
+                  symbol,
+                  triggerPrice,
+                  closePercentage,
+                  stopQty,
+                  side,
+                  order: {
+                    orderId: order.orderId,
+                    status: order.status,
+                    stopPrice: order.stopPrice,
+                    time: new Date(order.updateTime).toISOString()
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'set_take_profit': {
-        const { symbol, triggerPrice, closePercentage = 100 } = args as { symbol: string; triggerPrice: number; closePercentage?: number }
+        const {
+          symbol,
+          triggerPrice,
+          closePercentage = 100
+        } = args as { symbol: string; triggerPrice: number; closePercentage?: number }
         if (closePercentage < 1 || closePercentage > 100) {
           throw new Error('Close percentage must be between 1 and 100')
         }
-        
+
         const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
-        const position = account.positions.find((p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0)
-        
+        const position = account.positions.find(
+          (p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0
+        )
+
         if (!position) {
           throw new Error(`No open position found for ${symbol}`)
         }
-        
+
         const positionAmt = parseFloat(position.positionAmt)
         const tpQty = Math.abs(positionAmt * (closePercentage / 100))
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
-        
-        const order = await makeRequest(config, '/fapi/v1/order', {
-          symbol,
-          side,
-          quantity: tpQty,
-          type: 'TAKE_PROFIT_MARKET',
-          stopPrice: triggerPrice
-        }, 'POST', true)
-        
+
+        const order = await makeRequest(
+          config,
+          '/fapi/v1/order',
+          {
+            symbol,
+            side,
+            quantity: tpQty,
+            type: 'TAKE_PROFIT_MARKET',
+            stopPrice: triggerPrice
+          },
+          'POST',
+          true
+        )
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'SET_TAKE_PROFIT',
-              symbol,
-              triggerPrice,
-              closePercentage,
-              tpQty,
-              side,
-              order: {
-                orderId: order.orderId,
-                status: order.status,
-                stopPrice: order.stopPrice,
-                time: new Date(order.updateTime).toISOString()
-              }
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'SET_TAKE_PROFIT',
+                  symbol,
+                  triggerPrice,
+                  closePercentage,
+                  tpQty,
+                  side,
+                  order: {
+                    orderId: order.orderId,
+                    status: order.status,
+                    stopPrice: order.stopPrice,
+                    time: new Date(order.updateTime).toISOString()
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'set_trailing_stop': {
-        const { symbol, activationPrice, callbackRate } = args as { symbol: string; activationPrice: number; callbackRate: number }
+        const { symbol, activationPrice, callbackRate } = args as {
+          symbol: string
+          activationPrice: number
+          callbackRate: number
+        }
         if (callbackRate < 0.1 || callbackRate > 5) {
           throw new Error('Callback rate must be between 0.1 and 5')
         }
-        
+
         const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
-        const position = account.positions.find((p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0)
-        
+        const position = account.positions.find(
+          (p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0
+        )
+
         if (!position) {
           throw new Error(`No open position found for ${symbol}`)
         }
-        
+
         const positionAmt = parseFloat(position.positionAmt)
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
-        
-        const order = await makeRequest(config, '/fapi/v1/order', {
-          symbol,
-          side,
-          quantity: Math.abs(positionAmt),
-          type: 'TRAILING_STOP_MARKET',
-          activationPrice,
-          callbackRate
-        }, 'POST', true)
-        
+
+        const order = await makeRequest(
+          config,
+          '/fapi/v1/order',
+          {
+            symbol,
+            side,
+            quantity: Math.abs(positionAmt),
+            type: 'TRAILING_STOP_MARKET',
+            activationPrice,
+            callbackRate
+          },
+          'POST',
+          true
+        )
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'SET_TRAILING_STOP',
-              symbol,
-              activationPrice,
-              callbackRate,
-              side,
-              order: {
-                orderId: order.orderId,
-                status: order.status,
-                activatePrice: order.activationPrice,
-                priceRate: order.callbackRate,
-                time: new Date(order.updateTime).toISOString()
-              }
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'SET_TRAILING_STOP',
+                  symbol,
+                  activationPrice,
+                  callbackRate,
+                  side,
+                  order: {
+                    orderId: order.orderId,
+                    status: order.status,
+                    activatePrice: order.activationPrice,
+                    priceRate: order.callbackRate,
+                    time: new Date(order.updateTime).toISOString()
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'clear_stops': {
         const { symbol } = args as { symbol: string }
         const orders = await makeRequest(config, '/fapi/v1/openOrders', { symbol }, 'GET', true)
-        const stopOrders = orders.filter((o: any) => 
-          o.type === 'STOP_MARKET' || 
-          o.type === 'TAKE_PROFIT_MARKET' || 
-          o.type === 'TRAILING_STOP_MARKET'
+        const stopOrders = orders.filter(
+          (o: any) =>
+            o.type === 'STOP_MARKET' ||
+            o.type === 'TAKE_PROFIT_MARKET' ||
+            o.type === 'TRAILING_STOP_MARKET'
         )
-        
+
         const cancelResults = []
         for (const order of stopOrders) {
-          const result = await makeRequest(config, '/fapi/v1/order', {
-            symbol,
-            orderId: order.orderId
-          }, 'DELETE', true)
-          
+          const result = await makeRequest(
+            config,
+            '/fapi/v1/order',
+            {
+              symbol,
+              orderId: order.orderId
+            },
+            'DELETE',
+            true
+          )
+
           cancelResults.push({
             orderId: order.orderId,
             type: order.type,
             status: result.status
           })
         }
-        
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'CLEAR_STOPS',
-              symbol,
-              cancelledCount: cancelResults.length,
-              orders: cancelResults
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'CLEAR_STOPS',
+                  symbol,
+                  cancelledCount: cancelResults.length,
+                  orders: cancelResults
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'cancel_order': {
         const { symbol, orderId } = args as { symbol: string; orderId: string }
-        const result = await makeRequest(config, '/fapi/v1/order', {
-          symbol,
-          orderId
-        }, 'DELETE', true)
-        
+        const result = await makeRequest(
+          config,
+          '/fapi/v1/order',
+          {
+            symbol,
+            orderId
+          },
+          'DELETE',
+          true
+        )
+
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'CANCEL_ORDER',
-              symbol,
-              orderId,
-              result: {
-                orderId: result.orderId,
-                status: result.status,
-                origType: result.origType,
-                side: result.side,
-                price: result.price,
-                origQty: result.origQty
-              }
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'CANCEL_ORDER',
+                  symbol,
+                  orderId,
+                  result: {
+                    orderId: result.orderId,
+                    status: result.status,
+                    origType: result.origType,
+                    side: result.side,
+                    price: result.price,
+                    origQty: result.origQty
+                  }
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'cancel_all_orders': {
         const { symbol } = args as { symbol?: string }
         const params: any = {}
         if (symbol) params.symbol = symbol
-        
+
         const result = await makeRequest(config, '/fapi/v1/allOpenOrders', params, 'DELETE', true)
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              action: 'CANCEL_ALL_ORDERS',
-              symbol: symbol || 'ALL',
-              code: result.code,
-              msg: result.msg || 'Orders cancelled successfully'
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  action: 'CANCEL_ALL_ORDERS',
+                  symbol: symbol || 'ALL',
+                  code: result.code,
+                  msg: result.msg || 'Orders cancelled successfully'
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       case 'get_order_history': {
         const { symbol, limit = 50 } = args as { symbol?: string; limit?: number }
         const params: any = { limit }
         if (symbol) params.symbol = symbol
-        
+
         const orders = await makeRequest(config, '/fapi/v1/allOrders', params, 'GET', true)
         return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              count: orders.length,
-              orders: orders.map((o: any) => ({
-                orderId: o.orderId,
-                symbol: o.symbol,
-                type: o.type,
-                side: o.side,
-                price: o.price,
-                origQty: o.origQty,
-                executedQty: o.executedQty,
-                status: o.status,
-                timeInForce: o.timeInForce,
-                time: new Date(o.time).toISOString(),
-                updateTime: new Date(o.updateTime).toISOString()
-              }))
-            }, null, 2)
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  count: orders.length,
+                  orders: orders.map((o: any) => ({
+                    orderId: o.orderId,
+                    symbol: o.symbol,
+                    type: o.type,
+                    side: o.side,
+                    price: o.price,
+                    origQty: o.origQty,
+                    executedQty: o.executedQty,
+                    status: o.status,
+                    timeInForce: o.timeInForce,
+                    time: new Date(o.time).toISOString(),
+                    updateTime: new Date(o.updateTime).toISOString()
+                  }))
+                },
+                null,
+                2
+              )
+            }
+          ]
         }
       }
-      
+
       default:
         throw new Error(`Unknown tool: ${name}`)
     }
   } catch (error: any) {
     return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          error: error.message || 'Unknown error occurred',
-          tool: name,
-          args
-        }, null, 2)
-      }]
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(
+            {
+              error: error.message || 'Unknown error occurred',
+              tool: name,
+              args
+            },
+            null,
+            2
+          )
+        }
+      ]
     }
   }
 })

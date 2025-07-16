@@ -289,7 +289,7 @@ Before entering any trade, confirm:
 - `⊕` = confluence present
 - `⊖` = lacking confluence
 
-#### Action Types
+#### Action Types Examples
 
 - `monitor_pa_setup` - Watch for PA signal
 - `await_liquidity_sweep` - Wait for stop hunt

@@ -1,24 +1,20 @@
 import { stdin as input, stdout as output } from 'process'
 import * as readline from 'readline/promises'
 import { chatStream } from './chat'
+import { traderPrompt } from './prompts/trader'
 
 async function main() {
   const mcpServers = {
     servers: {
-      context7: {
-        transport: 'http' as const,
-        url: 'https://mcp.context7.com/sse'
-      },
-      calculator: {
+      binance: {
         transport: 'stdio' as const,
         command: 'npx',
-        args: ['-y', 'tsx', './src/mcpServers/calculator.ts']
+        args: ['-y', 'tsx', './src/mcpServers/binance.ts']
       }
     }
   }
 
-  const systemPrompt =
-    'You are a helpful trading technology assistant. Use available tools to help users find documentation and resources for building trading applications. You also have access to a calculator for mathematical operations.'
+  const systemPrompt = traderPrompt
 
   const rl = readline.createInterface({ input, output })
   const messages: Array<{ role: 'user' | 'assistant'; content: string }> = []

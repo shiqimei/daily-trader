@@ -24,6 +24,23 @@ function createSignature(queryString: string, secret: string): string {
   return crypto.createHmac('sha256', secret).update(queryString).digest('hex')
 }
 
+// Helper function to round quantity to proper precision
+function roundToStepSize(quantity: number, stepSize: number): number {
+  const precision = stepSize.toString().split('.')[1]?.length || 0
+  const factor = Math.pow(10, precision)
+  return Math.floor(quantity * factor) / factor
+}
+
+// Helper function to get symbol precision info
+async function getSymbolInfo(config: BinanceConfig, symbol: string): Promise<any> {
+  const exchangeInfo = await makeRequest(config, '/fapi/v1/exchangeInfo')
+  const symbolInfo = exchangeInfo.symbols.find((s: any) => s.symbol === symbol)
+  if (!symbolInfo) {
+    throw new Error(`Symbol ${symbol} not found`)
+  }
+  return symbolInfo
+}
+
 // Helper function to make API requests
 async function makeRequest(
   config: BinanceConfig,
@@ -1183,7 +1200,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             symbol,
             side,
             quantity: closeQty,
-            type: 'MARKET'
+            type: 'MARKET',
+            reduceOnly: true
           },
           'POST',
           true
@@ -1248,7 +1266,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             quantity: closeQty,
             type: 'LIMIT',
             timeInForce: 'GTC',
-            price
+            price,
+            reduceOnly: true
           },
           'POST',
           true
@@ -1413,14 +1432,20 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
 
         const positionAmt = parseFloat(position.positionAmt)
-        const reduceQty = Math.abs(positionAmt * (percentage / 100))
+        
+        // Get symbol info for precision
+        const symbolInfo = await getSymbolInfo(config, symbol)
+        const stepSize = parseFloat(symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001')
+        
+        const reduceQty = roundToStepSize(Math.abs(positionAmt * (percentage / 100)), stepSize)
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
 
         const params: any = {
           symbol,
           side,
           quantity: reduceQty,
-          type: price ? 'LIMIT' : 'MARKET'
+          type: price ? 'LIMIT' : 'MARKET',
+          reduceOnly: true
         }
         if (price) {
           params.price = price
@@ -1489,7 +1514,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             side,
             quantity: stopQty,
             type: 'STOP_MARKET',
-            stopPrice: triggerPrice
+            stopPrice: triggerPrice,
+            reduceOnly: true
           },
           'POST',
           true
@@ -1553,7 +1579,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             side,
             quantity: tpQty,
             type: 'TAKE_PROFIT_MARKET',
-            stopPrice: triggerPrice
+            stopPrice: triggerPrice,
+            reduceOnly: true
           },
           'POST',
           true

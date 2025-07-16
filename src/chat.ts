@@ -39,7 +39,7 @@ export async function* chatStream({
   maxTokens = 1000,
   temperature = 0.7
 }: ChatStreamOptions): AsyncIterable<string> {
-  
+
   // Convert MCP servers config to our internal format
   const internalMcpServers: MCPServerConfig[] = Object.entries(mcpServers.servers).map(([name, config]) => {
     if (config.type === 'http') {
@@ -62,18 +62,14 @@ export async function* chatStream({
 
   // Create agent service with custom MCP servers
   const agentService = new AgentService(internalMcpServers.length > 0 ? internalMcpServers : undefined);
-  
+
   await agentService.initialize();
 
   try {
-    // Convert messages to a simple prompt format
     const prompt = buildPromptFromMessages(systemPrompt, messages);
-    
-    // Check if we have any tools available for enhanced completion
     const tools = await agentService.getAvailableTools();
-    
+
     if (tools.length > 0) {
-      // Use tool-enabled completion
       const stream = await agentService.streamCompletionWithTools(prompt, {
         maxTokens,
         temperature,
@@ -81,14 +77,13 @@ export async function* chatStream({
       });
       yield* stream;
     } else {
-      // Use basic completion
       const stream = await agentService.streamCompletion(prompt, {
         maxTokens,
         temperature,
       });
       yield* stream;
     }
-    
+
   } finally {
     await agentService.disconnect();
   }
@@ -96,30 +91,28 @@ export async function* chatStream({
 
 function buildPromptFromMessages(systemPrompt: string | undefined, messages: ChatMessage[]): string {
   const parts: string[] = [];
-  
+
   if (systemPrompt) {
     parts.push(`System: ${systemPrompt}`);
   }
-  
+
   for (const message of messages) {
     if (typeof message.content === 'string') {
       parts.push(`${message.role}: ${message.content}`);
     } else {
       const contentParts: string[] = [];
-      
+
       for (const item of message.content) {
         if (item.type === 'text' && item.text) {
           contentParts.push(item.text);
         } else if (item.type === 'image' && item.source) {
-          // For now, we'll note that there's an image
-          // Bedrock Claude can handle images, but we'd need to modify the BedrockService
           contentParts.push(`[Image: ${item.source.media_type}]`);
         }
       }
-      
+
       parts.push(`${message.role}: ${contentParts.join(' ')}`);
     }
   }
-  
+
   return parts.join('\n\n');
 }

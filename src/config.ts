@@ -12,10 +12,8 @@ export interface MCPServerConfig {
 
 export interface Config {
   aws: {
-    // Traditional AWS credentials (preferred)
     accessKeyId?: string;
     secretAccessKey?: string;
-    // Bearer token (alternative)
     bearerToken?: string;
     region: string;
     models: {
@@ -36,7 +34,6 @@ function getRequiredEnvVar(name: string): string {
   return value;
 }
 
-// Validate that we have either traditional AWS credentials or bearer token
 function validateAwsCredentials() {
   const hasTraditionalCreds = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
 
@@ -49,20 +46,7 @@ function validateAwsCredentials() {
   }
 }
 
-// Validate credentials before creating config
 validateAwsCredentials();
-
-// Default MCP servers configuration
-function getDefaultMCPServers(): MCPServerConfig[] {
-  const servers: MCPServerConfig[] = [];
-  servers.push({
-    name: 'context7-sse',
-    transport: 'sse',
-    url: 'https://mcp.context7.com/sse',
-  });
-
-  return servers;
-}
 
 export const config: Config = {
   aws: {
@@ -76,6 +60,6 @@ export const config: Config = {
   },
   mcp: {
     enabled: process.env.MCP_ENABLED !== 'false',
-    servers: getDefaultMCPServers(),
+    servers: [],
   },
 }; 

@@ -46,7 +46,7 @@ export class AgentService {
   }
 
   async streamCompletion(
-    prompt: string, 
+    prompt: string,
     options: AgentPromptOptions = {}
   ): Promise<AsyncIterable<string>> {
     if (!this.isInitialized) {
@@ -73,13 +73,13 @@ export class AgentService {
   }
 
   async streamCompletionWithTools(
-    prompt: string, 
+    prompt: string,
     options: AgentPromptOptions = {}
   ): Promise<AsyncIterable<string>> {
     if (!this.isInitialized) {
       await this.initialize();
     }
-    
+
     // Get available MCP tools and convert to Bedrock format with MCP naming convention
     const mcpTools = await this.getAvailableTools();
     const bedrockTools = mcpTools.map(tool => ({
@@ -105,8 +105,8 @@ export class AgentService {
   }
 
   private async* processToolUseConversation(
-    prompt: string, 
-    tools: any[], 
+    prompt: string,
+    tools: any[],
     options: AgentPromptOptions
   ): AsyncIterable<string> {
     let conversationHistory = [
@@ -145,21 +145,21 @@ export class AgentService {
               yield `\n[Calling tool] ${currentToolUse.name} ${JSON.stringify(toolInput)}\n`;
               const toolResult = await this.executeTool(currentToolUse.name, toolInput);
               yield `\n[Tool executed] ${JSON.stringify(toolResult)}\n`;
-              
-               conversationHistory.push({
-                 role: 'assistant',
-                 content: `Used tool ${currentToolUse.name}`
-               });
-               
-               conversationHistory.push({
-                 role: 'user', 
-                 content: `Tool result: ${JSON.stringify(toolResult)}`
-               });
+
+              conversationHistory.push({
+                role: 'assistant',
+                content: `Used tool ${currentToolUse.name}`
+              });
+
+              conversationHistory.push({
+                role: 'user',
+                content: `Tool result: ${JSON.stringify(toolResult)}`
+              });
 
               // Create a new prompt for the next iteration
               prompt = this.buildConversationPrompt(conversationHistory);
               break; // Continue the conversation loop
-              
+
             } catch (error) {
               yield `\n[Tool execution failed: ${error}]\n`;
               return; // End the conversation
@@ -182,20 +182,20 @@ export class AgentService {
     // Build a proper conversation context with all messages
     const conversationText = history.map(msg => {
       const role = msg.role === 'user' ? 'Human' : 'Assistant';
-      const content = typeof msg.content === 'string' ? msg.content : 
-                     (msg.content?.[0]?.content || JSON.stringify(msg.content));
+      const content = typeof msg.content === 'string' ? msg.content :
+        (msg.content?.[0]?.content || JSON.stringify(msg.content));
       return `${role}: ${content}`;
     }).join('\n\n');
-    
+
     return `${conversationText}\n\nPlease continue the conversation based on the above context.`;
   }
 
   private async buildEnhancedPrompt(
-    originalPrompt: string, 
+    originalPrompt: string,
     options: AgentPromptOptions
   ): Promise<string> {
     const contextParts: string[] = [];
-    
+
     // Add available tools context
     if (options.includeAvailableTools) {
       const tools = await this.getAvailableTools();
@@ -244,7 +244,7 @@ Please use the provided context information to answer the user's query. If you n
     const toolDescriptions = tools.map(tool => {
       const desc = tool.description || 'No description available';
       const mcpToolName = `mcp__${tool.serverName}__${tool.name}`;
-      const schema = tool.inputSchema ? 
+      const schema = tool.inputSchema ?
         `\n  Parameters: ${JSON.stringify(tool.inputSchema, null, 2)}` : '';
       return `- **${mcpToolName}** (from ${tool.serverName}): ${desc}${schema}`;
     }).join('\n');
@@ -277,7 +277,7 @@ ${resourceDescriptions}`;
     for (const uri of uris) {
       try {
         const resource = await this.mcpService.readResource(uri);
-        
+
         if (resource.contents && resource.contents.length > 0) {
           const content = resource.contents
             .map(item => {
@@ -299,7 +299,7 @@ ${resourceDescriptions}`;
       }
     }
 
-    return contentParts.length > 0 ? 
+    return contentParts.length > 0 ?
       `### Loaded Resource Content\n\n${contentParts.join('\n\n')}` : '';
   }
 
@@ -326,7 +326,7 @@ ${resourceDescriptions}`;
       // Parse MCP-style tool names (mcp__server__tool)
       let actualToolName = toolName;
       let targetServerName = serverName;
-      
+
       if (toolName.startsWith('mcp__')) {
         const parts = toolName.split('__');
         if (parts.length >= 3) {
@@ -335,7 +335,7 @@ ${resourceDescriptions}`;
           actualToolName = parts.slice(2).join('__'); // In case tool name contains underscores
         }
       }
-      
+
       const result = await this.mcpService.callTool(actualToolName, arguments_, targetServerName);
       return result;
     } catch (error) {
@@ -377,16 +377,16 @@ ${resourceDescriptions}`;
 
   // Convenience method for trading-specific enhanced prompts
   async streamTradingAnalysis(
-    query: string, 
+    query: string,
     includeMarketData: boolean = true
   ): Promise<AsyncIterable<string>> {
     const contextUris: string[] = [];
-    
+
     // Add market data resources if available and requested
     if (includeMarketData) {
       const resources = await this.getAvailableResources();
-      const marketResources = resources.filter(r => 
-        r.name?.toLowerCase().includes('market') || 
+      const marketResources = resources.filter(r =>
+        r.name?.toLowerCase().includes('market') ||
         r.uri.toLowerCase().includes('market') ||
         r.description?.toLowerCase().includes('trading')
       );
@@ -395,7 +395,7 @@ ${resourceDescriptions}`;
 
     return this.streamCompletion(query, {
       includeAvailableTools: true,
-      includeAvailableResources: false, // We're loading specific resources
+      includeAvailableResources: false,
       contextResourceUris: contextUris,
       maxTokens: 1000,
       temperature: 0.7,

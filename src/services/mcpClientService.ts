@@ -76,7 +76,6 @@ export class MCPClientService {
         args: serverConfig.args || [],
         env: cleanEnv,
       });
-      console.log(`Using stdio transport for command: ${serverConfig.command}`);
     }
 
     const client = new Client({
@@ -168,7 +167,6 @@ export class MCPClientService {
         arguments: arguments_,
       }) as CallToolResult;
       
-      console.log(`Called tool '${toolName}' on server '${targetServerName}'`);
       return result;
     } catch (error) {
       console.error(`Failed to call tool '${toolName}' on server '${targetServerName}':`, error);
@@ -199,7 +197,6 @@ export class MCPClientService {
 
     try {
       const result = await targetClient.readResource({ uri }) as ReadResourceResult;
-      console.log(`Read resource '${uri}' from server '${targetServerName}'`);
       return result;
     } catch (error) {
       console.error(`Failed to read resource '${uri}' from server '${targetServerName}':`, error);
@@ -211,7 +208,6 @@ export class MCPClientService {
     for (const [serverName, client] of this.clients) {
       try {
         await client.close();
-        console.log(`Disconnected from MCP server: ${serverName}`);
       } catch (error) {
         console.error(`Error disconnecting from server ${serverName}:`, error);
       }

@@ -34,14 +34,6 @@ export class BedrockService {
         accessKeyId: config.aws.accessKeyId,
         secretAccessKey: config.aws.secretAccessKey,
       };
-    } else if (config.aws.bearerToken) {
-      // Bearer token authentication
-      clientConfig.credentials = {
-        accessKeyId: 'dummy', // Bearer token auth doesn't use these
-        secretAccessKey: 'dummy',
-        sessionToken: config.aws.bearerToken,
-      };
-      console.log('Using bearer token for Bedrock authentication');
     } else {
       throw new Error('No valid AWS credentials found');
     }

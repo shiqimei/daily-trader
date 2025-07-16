@@ -59,7 +59,7 @@ export async function* chatStream({
           name,
           command: config.command || '',
           args: config.args,
-          env: config.env,
+          env: Object.assign({}, process.env, config.env),
           transport: 'stdio' as const
         }
       }

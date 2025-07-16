@@ -40,8 +40,13 @@ async function makeRequest(
     params.recvWindow = 5000
   }
 
-  const queryString = Object.entries(params)
-    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+  // Filter out undefined values
+  const filteredParams = Object.entries(params)
+    .filter(([_, value]) => value !== undefined)
+    .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {})
+
+  const queryString = Object.entries(filteredParams)
+    .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
     .join('&')
 
   if (requireAuth) {
@@ -1072,10 +1077,12 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           symbol,
           side: 'BUY',
           quantity,
-          type: price ? 'LIMIT' : 'MARKET',
-          timeInForce: price ? 'GTC' : undefined
+          type: price ? 'LIMIT' : 'MARKET'
         }
-        if (price) params.price = price
+        if (price) {
+          params.price = price
+          params.timeInForce = 'GTC'
+        }
 
         const order = await makeRequest(config, '/fapi/v1/order', params, 'POST', true)
         return {
@@ -1115,10 +1122,12 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           symbol,
           side: 'SELL',
           quantity,
-          type: price ? 'LIMIT' : 'MARKET',
-          timeInForce: price ? 'GTC' : undefined
+          type: price ? 'LIMIT' : 'MARKET'
         }
-        if (price) params.price = price
+        if (price) {
+          params.price = price
+          params.timeInForce = 'GTC'
+        }
 
         const order = await makeRequest(config, '/fapi/v1/order', params, 'POST', true)
         return {
@@ -1347,10 +1356,12 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           symbol,
           side,
           quantity,
-          type: price ? 'LIMIT' : 'MARKET',
-          timeInForce: price ? 'GTC' : undefined
+          type: price ? 'LIMIT' : 'MARKET'
         }
-        if (price) params.price = price
+        if (price) {
+          params.price = price
+          params.timeInForce = 'GTC'
+        }
 
         const order = await makeRequest(config, '/fapi/v1/order', params, 'POST', true)
 
@@ -1409,10 +1420,12 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           symbol,
           side,
           quantity: reduceQty,
-          type: price ? 'LIMIT' : 'MARKET',
-          timeInForce: price ? 'GTC' : undefined
+          type: price ? 'LIMIT' : 'MARKET'
         }
-        if (price) params.price = price
+        if (price) {
+          params.price = price
+          params.timeInForce = 'GTC'
+        }
 
         const order = await makeRequest(config, '/fapi/v1/order', params, 'POST', true)
 
@@ -1813,6 +1826,6 @@ async function main() {
   await server.connect(transport)
 }
 
-main().catch(error => {
+main().catch(() => {
   process.exit(1)
 })

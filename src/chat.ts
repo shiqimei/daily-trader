@@ -20,7 +20,7 @@ export interface MCPServers {
   servers: Record<
     string,
     {
-      type: 'http' | 'stdio'
+      transport: 'http' | 'stdio' | 'sse'
       url?: string
       command?: string
       args?: string[]
@@ -47,7 +47,7 @@ export async function* chatStream({
   // Convert MCP servers config to our internal format
   const internalMcpServers: MCPServerConfig[] = Object.entries(mcpServers.servers).map(
     ([name, config]) => {
-      if (config.type === 'http') {
+      if (config.transport === 'http') {
         return {
           name,
           command: '', // Not used for HTTP

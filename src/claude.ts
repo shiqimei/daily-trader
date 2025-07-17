@@ -3,13 +3,13 @@ import dayjs from 'dayjs'
 import { traderPrompt } from './prompts/trader'
 
 const HOME_PATH = process.env.HOME
-const date = dayjs().format('YYYY-MM-DD HH:mm:ss')
 
 async function sleep(seconds: number) {
   return new Promise(resolve => setTimeout(resolve, seconds * 1000))
 }
 
 async function runClaude() {
+  const date = dayjs().format('YYYY-MM-DD HH:mm:ss')
   for await (const message of query({
     prompt: `now:${date} check memos, analyze market, and make decisions`,
     abortController: new AbortController(),

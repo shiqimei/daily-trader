@@ -109,7 +109,6 @@ async function runClaude() {
       case 'result': {
         switch (message.subtype) {
           case 'success':
-            console.error('Success:', message.result)
             break
           case 'error_max_turns':
             console.error('Error:', message)

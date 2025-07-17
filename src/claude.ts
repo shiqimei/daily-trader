@@ -14,6 +14,7 @@ async function runClaude() {
     prompt: `now:${date} check memos, analyze market, and make decisions`,
     abortController: new AbortController(),
     options: {
+      maxTurns: 99,
       customSystemPrompt: traderPrompt,
       allowedTools: [
         'mcp__binance__calculate_position_size',
@@ -51,23 +52,6 @@ async function runClaude() {
         'mcp__memo__add_memo',
         'mcp__memo__list_memos'
       ],
-      disallowedTools: [
-        'Task',
-        'Bash',
-        'Glob',
-        'Grep',
-        'LS',
-        'exit_plan_mode',
-        'Read',
-        'Edit',
-        'MultiEdit',
-        'Write',
-        'NotebookRead',
-        'NotebookEdit',
-        'WebFetch',
-        'TodoWrite',
-        'WebSearch'
-      ],
       mcpServers: {
         binance: {
           type: 'stdio',
@@ -80,6 +64,7 @@ async function runClaude() {
           args: ['-y', 'tsx', './src/mcpServers/memo.ts']
         }
       },
+      permissionMode: 'bypassPermissions',
       executable: 'node',
       pathToClaudeCodeExecutable:
         process.env.CLAUDE_CODE_EXECUTABLE || `${HOME_PATH}/.bun/bin/claude`
@@ -93,21 +78,23 @@ async function runClaude() {
         const { content } = message.message
         for (const part of content) {
           if (part.type === 'text') {
+            console.log(part.text)
           } else if (part.type === 'tool_use') {
             console.log('[Tool use]', part.name, part.input)
           } else if (part.type === 'tool_result') {
+            console.log(part)
             for (const item of part.content) {
               switch (item.type) {
                 case 'text':
-                  console.debug('[Tool result]', item.text)
+                  console.log('[Tool result]', item.text)
                   break
                 default:
-                  console.debug('[Tool result]', item)
+                  console.log('[Tool result]', item)
                   break
               }
             }
           } else {
-            console.debug(part)
+            console.log(part)
           }
         }
         break
@@ -115,7 +102,7 @@ async function runClaude() {
       case 'user': {
         const { content } = message.message
         for (const part of content) {
-          console.debug(part)
+          console.log(part)
         }
         break
       }

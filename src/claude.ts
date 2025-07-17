@@ -92,7 +92,7 @@ for await (const message of query({
         if (part.type === 'text') {
           console.log(part.text)
         } else if (part.type === 'tool_use') {
-          console.log('[Tool use]', part.input)
+          console.log('[Tool use]', part.name, part.input)
         } else if (part.type === 'tool_result') {
           for (const item of part.content) {
             switch (item.type) {

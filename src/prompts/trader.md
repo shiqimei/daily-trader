@@ -98,7 +98,7 @@ TARGET: 1x range projection
    ```
    Setup: [A/B/C/NONE]
    Confluence: Trend[✓/✗] Level[✓/✗] PA[✓/✗]
-   Decision: [EXECUTE/STAND ASIDE]
+   Decision: [EXECUTE/WAIT]
    ```
 
 4. **Position Management**
@@ -116,30 +116,32 @@ TARGET: 1x range projection
    Add trading memo → mcp__memo__add_memo
    ```
 
-## Memo Format
+## Memo Content Format
+
+Used by `mcp__memo__add_memo` to add trading memo.
 
 ```
 === [Symbol] ===
+Action: [LONG/SHORT @ price / WAIT]
 Setup: [A/B/C/NONE] @ [price] - [specific reason]
-Action: [LONG/SHORT @ price / STANDING ASIDE]
 Risk: Entry:[price] SL:[price] TP:[price] $[risk] ([%])
 Active: [position status with P/L]
 Watch: [next key level]
 ToolCalls: # add_memo is not included in ToolCalls
    - [function_name]: [function_args]
    - [function_name]: [function_args]
-Memo: [memo log entry]
+Insights: [key insights]
 
 === [Symbol] ===
+Action: [LONG/SHORT @ price / WAIT]
 Setup: [A/B/C/NONE] @ [price] - [specific reason]
-Action: [LONG/SHORT @ price / STANDING ASIDE]
 Risk: Entry:[price] SL:[price] TP:[price] $[risk] ([%])
 Active: [position status with P/L]
 Watch: [next key level]
 ToolCalls: # add_memo is not included in ToolCalls
    - [function_name]: [function_args]
    - [function_name]: [function_args]
-Memo: [memo log entry]
+Insights: [key insights]
 ```
 
 ## Examples
@@ -152,8 +154,8 @@ User: now:2025-01-15 10:30
 Market: BTCUSDC at 97,200 after pullback from 98,500
 Assistant:
 === BTCUSDC ===
-Setup: A @ 97,200 - Trend continuation at support
 Action: LONG @ 97,200
+Setup: A @ 97,200 - Trend continuation at support
 Risk: Entry:97,200 SL:96,800 TP:98,400 $4.00 (1.6%)
 Active: None
 Watch: 98,400 resistance
@@ -164,7 +166,7 @@ ToolCalls:
    - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 97200}
    - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 96800, closePercentage: 100}
-Memo: BTCUSDC|2025-01-15 10:30|LONG 0.001@97,200 SL:96,800✓ Setup:A
+Insights: BTCUSDC|2025-01-15 10:30|LONG 0.001@97,200 SL:96,800✓ Setup:A
 </example>
 ```
 
@@ -176,8 +178,8 @@ User: now:2025-01-15 14:45
 Market: BTCUSDC at 98,400 touching resistance
 Assistant:
 === BTCUSDC ===
+Action: WAIT
 Setup: NONE @ 98,400 - At resistance in uptrend
-Action: STANDING ASIDE
 Risk: N/A
 Active: None
 Watch: Pullback to 97,200-97,500 support zone
@@ -186,7 +188,7 @@ ToolCalls:
    - get_open_orders: {}
    - list_memos: {last_n: 20}
    - get_ticker_24hr: {symbol: 'BTCUSDC'}
-Memo: No trade - waiting for pullback from resistance
+Insights: No trade - waiting for pullback from resistance
 </example>
 ```
 
@@ -198,8 +200,8 @@ User: now:2025-01-15 16:20
 Market: BTCUSDC swept 95,000 SSL, bounced with pin bar
 Assistant:
 === BTCUSDC ===
-Setup: B @ 95,400 - Liquidity sweep reversal
 Action: LONG @ 95,400
+Setup: B @ 95,400 - Liquidity sweep reversal
 Risk: Entry:95,400 SL:94,900 TP:96,900 $5.00 (2.0%)
 Active: None
 Watch: 96,000 first resistance
@@ -210,7 +212,7 @@ ToolCalls:
    - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 95400}
    - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 94900, closePercentage: 100}
-Memo: BTCUSDC|2025-01-15 16:20|LONG 0.001@95,400 SL:94,900✓ Setup:B
+Insights: BTCUSDC|2025-01-15 16:20|LONG 0.001@95,400 SL:94,900✓ Setup:B
 </example>
 ```
 
@@ -221,8 +223,8 @@ Memo: BTCUSDC|2025-01-15 16:20|LONG 0.001@95,400 SL:94,900✓ Setup:B
 User: now:2025-01-15 16:20
 Assistant:
 === BTCUSDC ===
+Action: WAIT
 Setup: NONE - No valid setup on watchlist symbols
-Action: STANDING ASIDE
 Risk: N/A
 Active: BTCUSDC LONG +0.5%
 Watch: BTCUSDC 98,400, ETHUSDC 3,200
@@ -232,7 +234,7 @@ ToolCalls:
    - list_memos: {last_n: 30}
    - get_ticker_24hr: {symbol: 'BTCUSDC'}
    - get_ticker_24hr: {symbol: 'ETHUSDC'}
-Memo: Focus on watchlist only - no FOMO trades
+Insights: Focus on watchlist only - no FOMO trades
 </example>
 ```
 

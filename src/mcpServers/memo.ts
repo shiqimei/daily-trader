@@ -15,7 +15,7 @@ const __dirname = dirname(__filename)
 
 interface AddMemoArgs {
   date: string
-  key_insights: string
+  content: string
 }
 
 interface ListMemosArgs {
@@ -25,7 +25,7 @@ interface ListMemosArgs {
 interface Memo {
   id: number
   date: string
-  key_insights: string
+  content: string
   created_at: string
 }
 
@@ -40,12 +40,12 @@ const memoTools: Tool[] = [
           type: 'string',
           description: 'Date of the memo in YYYY-MM-DD HH:MM:SS format'
         },
-        key_insights: {
+        content: {
           type: 'string',
           description: 'Key trading insights to remember'
         }
       },
-      required: ['date', 'key_insights']
+      required: ['date', 'content']
     }
   },
   {
@@ -76,17 +76,17 @@ class MemoDatabase {
       CREATE TABLE IF NOT EXISTS memos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         date TEXT NOT NULL,
-        key_insights TEXT NOT NULL,
+        content TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `)
   }
 
-  addMemo(date: string, key_insights: string): Memo {
+  addMemo(date: string, content: string): Memo {
     const stmt = this.db.prepare(
-      'INSERT INTO memos (date, key_insights) VALUES (?, ?)'
+      'INSERT INTO memos (date, content) VALUES (?, ?)'
     )
-    const result = stmt.run(date, key_insights)
+    const result = stmt.run(date, content)
 
     const memo = this.db
       .prepare('SELECT * FROM memos WHERE id = ?')
@@ -131,15 +131,15 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
   switch (name) {
     case 'add_memo': {
-      const { date, key_insights } = args as unknown as AddMemoArgs
+      const { date, content } = args as unknown as AddMemoArgs
 
       try {
-        const memo = memoDb.addMemo(date, key_insights)
+        const memo = memoDb.addMemo(date, content)
         return {
           content: [
             {
               type: 'text',
-              text: `Memo added successfully:\nID: ${memo.id}\nDate: ${memo.date}\nInsights: ${memo.key_insights}`
+              text: `Memo added successfully:\nID: ${memo.id}\nDate: ${memo.date}\nInsights: ${memo.content}`
             }
           ]
         }
@@ -168,7 +168,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
 
         const memoText = memos
-          .map(memo => `--- ${memo.date} [${memo.id}] ---\n\n${memo.key_insights}\n`)
+          .map(memo => `--- ${memo.date} [${memo.id}] ---\n\n${memo.content}\n`)
           .join('\n')
 
         return {

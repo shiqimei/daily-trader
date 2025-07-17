@@ -14,7 +14,7 @@ async function runClaude() {
     prompt: `now:${date} check memos, analyze market, and make decisions`,
     abortController: new AbortController(),
     options: {
-      maxTurns: 99,
+      maxTurns: 999,
       customSystemPrompt: traderPrompt,
       allowedTools: [
         'mcp__binance__calculate_position_size',

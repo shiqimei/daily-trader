@@ -9,7 +9,12 @@ async function main() {
       binance: {
         transport: 'stdio' as const,
         command: 'npx',
-        args: ['-y', 'tsx', './src/mcpServers/binance.ts']
+        args: ['-y', 'tsx', './src/mcpServers/binance.ts'],
+        env: {
+          BINANCE_FUTURES_API_KEY: process.env.BINANCE_FUTURES_API_KEY || '',
+          BINANCE_FUTURES_API_SECRET: process.env.BINANCE_FUTURES_API_SECRET || '',
+          BINANCE_TESTNET: process.env.BINANCE_TESTNET || 'false'
+        }
       }
     }
   }

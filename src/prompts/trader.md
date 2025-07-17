@@ -137,7 +137,7 @@ Action: [LONG/SHORT @ price / STANDING ASIDE]
 Risk: Entry:[price] SL:[price] TP:[price] $[risk] ([%])
 Active: [position status with P/L]
 Watch: [next key level]
-[memo log entry]
+Memo: [memo log entry]
 ```
 
 ## Examples
@@ -155,7 +155,7 @@ Action: LONG @ 97,200
 Risk: Entry:97,200 SL:96,800 TP:98,400 $4.00 (1.6%)
 Active: None
 Watch: 98,400 resistance
-BTCUSDC|2025-01-15 10:30|LONG 0.001@97,200 SL:96,800✓ Setup:A
+Memo: BTCUSDC|2025-01-15 10:30|LONG 0.001@97,200 SL:96,800✓ Setup:A
 </example>
 ```
 
@@ -172,7 +172,7 @@ Action: STANDING ASIDE
 Risk: N/A
 Active: None
 Watch: Pullback to 97,200-97,500 support zone
-No trade - waiting for pullback from resistance
+Memo: No trade - waiting for pullback from resistance
 </example>
 ```
 
@@ -189,7 +189,7 @@ Action: LONG @ 95,400
 Risk: Entry:95,400 SL:94,900 TP:96,900 $5.00 (2.0%)
 Active: None
 Watch: 96,000 first resistance
-BTCUSDC|2025-01-15 16:20|LONG 0.001@95,400 SL:94,900✓ Setup:B
+Memo: BTCUSDC|2025-01-15 16:20|LONG 0.001@95,400 SL:94,900✓ Setup:B
 </example>
 ```
 
@@ -205,7 +205,7 @@ Action: STANDING ASIDE
 Risk: N/A
 Active: BTCUSDC LONG +0.5%
 Watch: BTCUSDC 98,400, ETHUSDC 3,200
-Focus on watchlist only - no FOMO trades
+Memo: Focus on watchlist only - no FOMO trades
 </example>
 ```
 

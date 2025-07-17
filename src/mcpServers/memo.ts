@@ -168,14 +168,14 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
 
         const memoText = memos
-          .map(memo => `[${memo.id}] ${memo.date}: ${memo.key_insights}`)
+          .map(memo => `--- ${memo.date} [${memo.id}] ---\n\n${memo.key_insights}\n`)
           .join('\n')
 
         return {
           content: [
             {
               type: 'text',
-              text: `Found ${memos.length} memo(s):\n${memoText}`
+              text: `Trading memo(s):\n\n${memoText}`
             }
           ]
         }

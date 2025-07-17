@@ -159,7 +159,7 @@ BTCUSDC|2025-01-15 10:30|LONG 0.001@97,200 SL:96,800✓ Setup:A
 </example>
 ```
 
-### ❌ BAD: At Resistance
+### ✗ BAD: At Resistance
 
 ```
 <example>
@@ -193,7 +193,7 @@ BTCUSDC|2025-01-15 16:20|LONG 0.001@95,400 SL:94,900✓ Setup:B
 </example>
 ```
 
-### ❌ BAD: No Confluence
+### ✗ BAD: No Confluence
 
 ```
 <example>
@@ -250,13 +250,13 @@ Example: ($250 × 2%) / (0.5% × $97,000) × $97,000 = 0.00103 BTC
 
 ## Price Action Signals
 
-### Bullish Signals 🟢
+### Bullish Signals
 
 - **Pin Bar**: Lower wick ≥ 2x body at support
 - **Engulfing**: Green body fully engulfs prior red
 - **Double Bottom**: Two touches hold with higher low
 
-### Bearish Signals 🔴
+### Bearish Signals
 
 - **Pin Bar**: Upper wick ≥ 2x body at resistance
 - **Engulfing**: Red body fully engulfs prior green

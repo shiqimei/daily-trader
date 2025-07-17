@@ -121,16 +121,9 @@ TARGET: 1x range projection
 Used by `mcp__memo__add_memo` to add trading memo.
 
 ```
-=== [Symbol] ===
-Action: [LONG/SHORT @ price / WAIT]
-Setup: [A/B/C/NONE] @ [price] - [specific reason]
-Risk: Entry:[price] SL:[price] TP:[price] $[risk] ([%])
-Active: [position status with P/L]
-Watch: [next key level]
-ToolCalls: # add_memo is not included in ToolCalls
-   - [function_name]: [function_args]
-   - [function_name]: [function_args]
-Insights: [key insights]
+Account: [account balance] [available balance]
+Positions: [position status with P/L]
+Open Orders: [open orders] # only include open orders that are not in positions
 
 === [Symbol] ===
 Action: [LONG/SHORT @ price / WAIT]
@@ -141,7 +134,18 @@ Watch: [next key level]
 ToolCalls: # add_memo is not included in ToolCalls
    - [function_name]: [function_args]
    - [function_name]: [function_args]
-Insights: [key insights]
+Decisions: [key insights]
+
+=== [Symbol] ===
+Action: [LONG/SHORT @ price / WAIT]
+Setup: [A/B/C/NONE] @ [price] - [specific reason]
+Risk: Entry:[price] SL:[price] TP:[price] $[risk] ([%])
+Active: [position status with P/L]
+Watch: [next key level]
+ToolCalls: # add_memo is not included in ToolCalls
+   - [function_name]: [function_args]
+   - [function_name]: [function_args]
+Decisions: [key insights]
 ```
 
 ## Examples
@@ -166,7 +170,7 @@ ToolCalls:
    - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 97200}
    - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 96800, closePercentage: 100}
-Insights: BTCUSDC|2025-01-15 10:30|LONG 0.001@97,200 SL:96,800✓ Setup:A
+Decisions: BTCUSDC|2025-01-15 10:30|LONG 0.001@97,200 SL:96,800✓ Setup:A
 </example>
 ```
 
@@ -188,7 +192,7 @@ ToolCalls:
    - get_open_orders: {}
    - list_memos: {last_n: 20}
    - get_ticker_24hr: {symbol: 'BTCUSDC'}
-Insights: No trade - waiting for pullback from resistance
+Decisions: No trade - waiting for pullback from resistance
 </example>
 ```
 
@@ -212,7 +216,7 @@ ToolCalls:
    - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 95400}
    - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 94900, closePercentage: 100}
-Insights: BTCUSDC|2025-01-15 16:20|LONG 0.001@95,400 SL:94,900✓ Setup:B
+Decisions: BTCUSDC|2025-01-15 16:20|LONG 0.001@95,400 SL:94,900✓ Setup:B
 </example>
 ```
 
@@ -234,7 +238,7 @@ ToolCalls:
    - list_memos: {last_n: 30}
    - get_ticker_24hr: {symbol: 'BTCUSDC'}
    - get_ticker_24hr: {symbol: 'ETHUSDC'}
-Insights: Focus on watchlist only - no FOMO trades
+Decisions: Focus on watchlist only - no FOMO trades
 </example>
 ```
 

@@ -126,24 +126,26 @@ export class AgentService {
 
       let currentToolUse: any = null
       let accumulatedJson = ''
+      let initialToolInput = null
       let hasTextContent = false
 
       for await (const chunk of stream) {
-        console.log(chunk)
         if (chunk.type === 'text') {
           hasTextContent = true
           yield chunk.content
         } else if (chunk.type === 'tool_use_start') {
           currentToolUse = chunk.tool_use
           accumulatedJson = ''
+          if (Object.keys(chunk.tool_use.input).length > 0) {
+            initialToolInput = chunk.tool_use.input
+          }
         } else if (chunk.type === 'tool_use_delta') {
           accumulatedJson += chunk.partial_json
         } else if (chunk.type === 'stop') {
           if (chunk.stop_reason === 'tool_use' && currentToolUse) {
             // Execute the tool
             try {
-              yield `\n[Accumulated JSON: ${accumulatedJson}]\n`
-              const toolInput = JSON.parse(accumulatedJson)
+              const toolInput = initialToolInput || JSON.parse(accumulatedJson || '{}')
               yield `\n[Calling tool] ${currentToolUse.name} ${JSON.stringify(toolInput)}\n`
               const toolResult = await this.executeTool(currentToolUse.name, toolInput)
               yield `\n[Tool executed] ${JSON.stringify(toolResult)}\n`

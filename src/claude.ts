@@ -86,31 +86,28 @@ async function runClaude() {
     }
   })) {
     switch (message.type) {
-      case 'system':
-        console.log('System:', message.subtype)
-        console.log('MCP Servers:', message.mcp_servers)
-        console.log(message)
+      case 'system': {
         break
+      }
       case 'assistant': {
         const { content } = message.message
         for (const part of content) {
           if (part.type === 'text') {
-            console.log(part.text)
           } else if (part.type === 'tool_use') {
-            console.log('[Tool use]', part.name, part.input)
+            console.debug('[Tool use]', part.name, part.input)
           } else if (part.type === 'tool_result') {
             for (const item of part.content) {
               switch (item.type) {
                 case 'text':
-                  console.log('[Tool result]', item.text)
+                  console.debug('[Tool result]', item.text)
                   break
                 default:
-                  console.log('[Tool result]', item)
+                  console.debug('[Tool result]', item)
                   break
               }
             }
           } else {
-            console.log(part)
+            console.debug(part)
           }
         }
         break
@@ -118,7 +115,7 @@ async function runClaude() {
       case 'user': {
         const { content } = message.message
         for (const part of content) {
-          console.log(part)
+          console.debug(part)
         }
         break
       }

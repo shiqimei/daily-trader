@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 import { Server } from '@modelcontextprotocol/sdk/server/index'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio'
 import {
@@ -555,7 +555,9 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
         // Get symbol info for precision
         const symbolInfo = await getSymbolInfo(config, symbol)
-        const stepSize = parseFloat(symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001')
+        const stepSize = parseFloat(
+          symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001'
+        )
 
         const quantity = usdtAmount / price
         const roundedQuantity = roundToStepSize(quantity, stepSize)
@@ -1188,11 +1190,13 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
 
         const positionAmt = parseFloat(position.positionAmt)
-        
+
         // Get symbol info for precision
         const symbolInfo = await getSymbolInfo(config, symbol)
-        const stepSize = parseFloat(symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001')
-        
+        const stepSize = parseFloat(
+          symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001'
+        )
+
         const closeQty = roundToStepSize(Math.abs(positionAmt * (percentage / 100)), stepSize)
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
 
@@ -1257,11 +1261,13 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
 
         const positionAmt = parseFloat(position.positionAmt)
-        
+
         // Get symbol info for precision
         const symbolInfo = await getSymbolInfo(config, symbol)
-        const stepSize = parseFloat(symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001')
-        
+        const stepSize = parseFloat(
+          symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001'
+        )
+
         const closeQty = roundToStepSize(Math.abs(positionAmt * (percentage / 100)), stepSize)
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
 
@@ -1440,11 +1446,13 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
 
         const positionAmt = parseFloat(position.positionAmt)
-        
+
         // Get symbol info for precision
         const symbolInfo = await getSymbolInfo(config, symbol)
-        const stepSize = parseFloat(symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001')
-        
+        const stepSize = parseFloat(
+          symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001'
+        )
+
         const reduceQty = roundToStepSize(Math.abs(positionAmt * (percentage / 100)), stepSize)
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
 
@@ -1511,11 +1519,13 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
 
         const positionAmt = parseFloat(position.positionAmt)
-        
+
         // Get symbol info for precision
         const symbolInfo = await getSymbolInfo(config, symbol)
-        const stepSize = parseFloat(symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001')
-        
+        const stepSize = parseFloat(
+          symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001'
+        )
+
         const stopQty = roundToStepSize(Math.abs(positionAmt * (closePercentage / 100)), stepSize)
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
 
@@ -1581,11 +1591,13 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
 
         const positionAmt = parseFloat(position.positionAmt)
-        
+
         // Get symbol info for precision
         const symbolInfo = await getSymbolInfo(config, symbol)
-        const stepSize = parseFloat(symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001')
-        
+        const stepSize = parseFloat(
+          symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001'
+        )
+
         const tpQty = roundToStepSize(Math.abs(positionAmt * (closePercentage / 100)), stepSize)
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
 

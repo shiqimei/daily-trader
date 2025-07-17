@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 import { Server } from '@modelcontextprotocol/sdk/server/index'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio'
 import {

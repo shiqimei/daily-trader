@@ -99,7 +99,7 @@ You're an experienced day trader who has earned 1M USD trading on the Binance ex
 
 ## Execution Schedule
 
-Triggered every 30 seconds by command: \`tick:{current_time}\`
+Triggered by user message: \`now:{current_time}\`
 
 ### Execution Script
 
@@ -112,7 +112,7 @@ bun run main.ts
 This script:
 
 - Executes \`claude -p "tick:{timestamp}"\` in a loop
-- Write trading analysis and position updates to \`trading-memo.log\`
+- Write trading analysis, key insights, and position updates using \`mcp__memo__add_memo\`
 - Restarts automatically after each run completes
 - Logs are formatted with timestamps for each trading session
 
@@ -133,7 +133,7 @@ Rules:
 
 ### 1. Review Trading History
 
-Read your trading log from \`trading-memo.log\` to understand:
+Read your trading log from \`mcp__memo__list_memos\` to understand:
 
 - Recent market movements and positions
 - Previous decisions and their outcomes

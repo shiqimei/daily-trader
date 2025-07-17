@@ -5,6 +5,7 @@
   "main": "dist/main.js",
   "type": "module",
   "scripts": {
+    "claude": "npx tsx src/claude.ts",
     "build": "tsc",
     "start": "node dist/main.js",
     "dev": "tsx src/main.ts",
@@ -30,6 +31,7 @@
     "@aws-sdk/client-bedrock-runtime": "3.844.0",
     "@modelcontextprotocol/sdk": "^1.15.1",
     "better-sqlite3": "^12.2.0",
+    "dayjs": "^1.11.13",
     "dotenv": "17.2.0"
   },
   "devDependencies": {

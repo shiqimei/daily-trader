@@ -76,7 +76,8 @@ for await (const message of query({
       }
     },
     executable: 'node',
-    pathToClaudeCodeExecutable: `${HOME_PATH}/.bun/bin/claude`
+    pathToClaudeCodeExecutable:
+      process.env.CLAUDE_CODE_EXECUTABLE || `${HOME_PATH}/.bun/bin/claude`
   }
 })) {
   switch (message.type) {

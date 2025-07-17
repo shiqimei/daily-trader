@@ -28,6 +28,7 @@
   "license": "ISC",
   "packageManager": "pnpm@10.13.1",
   "dependencies": {
+    "@anthropic-ai/claude-code": "^1.0.53",
     "@aws-sdk/client-bedrock-runtime": "3.844.0",
     "@modelcontextprotocol/sdk": "^1.15.1",
     "better-sqlite3": "^12.2.0",

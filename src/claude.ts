@@ -120,13 +120,13 @@ for await (const message of query({
     case 'result': {
       switch (message.subtype) {
         case 'success':
-          console.log('Success:', message.result)
+          console.error('Success:', message.result)
           break
         case 'error_max_turns':
-          console.log('Error:', message)
+          console.error('Error:', message)
           break
         case 'error_during_execution':
-          console.log('Error:', message)
+          console.error('Error:', message)
           break
       }
       break

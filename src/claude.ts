@@ -52,6 +52,23 @@ async function runClaude() {
         'mcp__memo__add_memo',
         'mcp__memo__list_memos'
       ],
+      disallowedTools: [
+        'Task',
+        'Bash',
+        'Glob',
+        'Grep',
+        'LS',
+        'exit_plan_mode',
+        'Read',
+        'Edit',
+        'MultiEdit',
+        'Write',
+        'NotebookRead',
+        'NotebookEdit',
+        'WebFetch',
+        'TodoWrite',
+        'WebSearch'
+      ],
       mcpServers: {
         binance: {
           type: 'stdio',
@@ -64,7 +81,6 @@ async function runClaude() {
           args: ['-y', 'tsx', './src/mcpServers/memo.ts']
         }
       },
-      permissionMode: 'bypassPermissions',
       executable: 'node',
       pathToClaudeCodeExecutable:
         process.env.CLAUDE_CODE_EXECUTABLE || `${HOME_PATH}/.bun/bin/claude`

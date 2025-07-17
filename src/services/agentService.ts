@@ -129,6 +129,7 @@ export class AgentService {
       let hasTextContent = false
 
       for await (const chunk of stream) {
+        console.log(chunk)
         if (chunk.type === 'text') {
           hasTextContent = true
           yield chunk.content
@@ -141,6 +142,7 @@ export class AgentService {
           if (chunk.stop_reason === 'tool_use' && currentToolUse) {
             // Execute the tool
             try {
+              yield `\n[Accumulated JSON: ${accumulatedJson}]\n`
               const toolInput = JSON.parse(accumulatedJson)
               yield `\n[Calling tool] ${currentToolUse.name} ${JSON.stringify(toolInput)}\n`
               const toolResult = await this.executeTool(currentToolUse.name, toolInput)

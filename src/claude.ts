@@ -94,7 +94,7 @@ async function runClaude() {
         for (const part of content) {
           if (part.type === 'text') {
           } else if (part.type === 'tool_use') {
-            console.debug('[Tool use]', part.name, part.input)
+            console.log('[Tool use]', part.name, part.input)
           } else if (part.type === 'tool_result') {
             for (const item of part.content) {
               switch (item.type) {

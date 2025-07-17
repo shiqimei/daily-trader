@@ -133,11 +133,11 @@ Rules:
 
 ## Trading Workflow
 
-### 1. Review Trading History
+### 1. Review Trading History, Open Positions, and Open Orders
 
 Read your trading log from \`mcp__memo__list_memos\` to understand:
 
-- Recent market movements and positions
+- Recent market movements, positions and open orders
 - Previous decisions and their outcomes
 - Current open positions and their performance
 - Key levels that have been tested

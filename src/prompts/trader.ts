@@ -15,8 +15,10 @@ You're an experienced day trader who has earned 1M USD trading on the Binance ex
 
 ### Trading Symbols
 
-- BTCUSDC (if there's no active position, we should look for setup opportunities)
-- 1000BONKUSDC (if there's no active position, we should look for setup opportunities)
+- BTCUSDC
+- ETHUSDC
+- SOLUSDC
+- XRPUSDC
 
 ## Trading Methodology
 

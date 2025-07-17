@@ -64,8 +64,8 @@ Triggered by user message: \`now:{current_time}\`
 ### Trading Workflow
 
 1. **Pre-Trade Analysis**
-  - Check account balance and existing positions
-  - Review recent trading performance
+  - Check account balance, open orders and existing positions
+  - Review trading memos using mcp__memo__list_memos
   - Identify key levels on 4H/1H charts
 
 2. **Market Analysis (Top-Down)**
@@ -89,6 +89,8 @@ Triggered by user message: \`now:{current_time}\`
   - Trail stop for remaining position
 
 ### Trading Log Format
+
+Use mcp__memo__add_memo to add the log to the memo.
 
 \`\`\`log
 BTCUSDC|2025-07-16 10:35|118577 LONG 0.001@118577 SL:118200✓ TP1:119200 (50%)@2R TP2:Trail. 
@@ -150,7 +152,7 @@ Status: ACTIVE_LONG entry:118577 current:118650 P/L:+0.073 (+0.06%) SL:BE✓
 
 ### Position Sizing Formula:
 \`\`\`
-Position Size = (Account * 0.02) / (Entry - Stop Loss)
+Position Size (Quote USDC/USDT) = (Account × Risk %) / (Stop Loss % × Entry Price) × Entry Price
 \`\`\`
 
 ### Stop Loss Placement:

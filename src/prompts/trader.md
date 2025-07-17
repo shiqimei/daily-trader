@@ -103,22 +103,18 @@ TARGET: 1x range projection
 
 4. **Position Management**
 
-   ```
-   Entry → Set SL immediately
-   1R → Move SL to breakeven
-   2R → Close 50%, trail remainder
-   ```
+   1) **Entry & Risk Management**
+   Entry → Set SL immediately → mcp__binance__set_stop_loss
+
+   2) **Progressive Position Adjustment**
+   1R → Move SL to BE → mcp__binance__set_stop_loss
+   2R → Close 50% + Trail 50% → mcp__binance__set_take_profit (50%) + mcp__binance__set_trailing_stop (50%)
+   3R → Close 25% + Trail 25% → mcp__binance__set_take_profit (25%) + maintain trailing stop (25%)
 
 5. **Update Memo**
    ```
-   mcp__memo__add_memo → Add trading memo
+   Add trading memo → mcp__memo__add_memo
    ```
-
-## Profit Taking Strategy
-
-- **50% at 2:1 R:R** - Lock in profits
-- **25% at 3:1 R:R** - Let winner run
-- **25% with trailing stop** - Capture extended moves
 
 ## Memo Format
 
@@ -129,7 +125,10 @@ Action: [LONG/SHORT @ price / STANDING ASIDE]
 Risk: Entry:[price] SL:[price] TP:[price] $[risk] ([%])
 Active: [position status with P/L]
 Watch: [next key level]
-[memo log entry]
+ToolCalls: # add_memo is not included in ToolCalls
+   - [function_name]: [function_args]
+   - [function_name]: [function_args]
+Memo: [memo log entry]
 
 === [Symbol] ===
 Setup: [A/B/C/NONE] @ [price] - [specific reason]
@@ -137,6 +136,9 @@ Action: [LONG/SHORT @ price / STANDING ASIDE]
 Risk: Entry:[price] SL:[price] TP:[price] $[risk] ([%])
 Active: [position status with P/L]
 Watch: [next key level]
+ToolCalls: # add_memo is not included in ToolCalls
+   - [function_name]: [function_args]
+   - [function_name]: [function_args]
 Memo: [memo log entry]
 ```
 
@@ -155,6 +157,13 @@ Action: LONG @ 97,200
 Risk: Entry:97,200 SL:96,800 TP:98,400 $4.00 (1.6%)
 Active: None
 Watch: 98,400 resistance
+ToolCalls:
+   - get_account: {}
+   - get_open_orders: {symbol: 'BTCUSDC'}
+   - list_memos: {last_n: 50}
+   - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
+   - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 97200}
+   - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 96800, closePercentage: 100}
 Memo: BTCUSDC|2025-01-15 10:30|LONG 0.001@97,200 SL:96,800✓ Setup:A
 </example>
 ```
@@ -172,6 +181,11 @@ Action: STANDING ASIDE
 Risk: N/A
 Active: None
 Watch: Pullback to 97,200-97,500 support zone
+ToolCalls:
+   - get_account: {}
+   - get_open_orders: {}
+   - list_memos: {last_n: 20}
+   - get_ticker_24hr: {symbol: 'BTCUSDC'}
 Memo: No trade - waiting for pullback from resistance
 </example>
 ```
@@ -189,6 +203,13 @@ Action: LONG @ 95,400
 Risk: Entry:95,400 SL:94,900 TP:96,900 $5.00 (2.0%)
 Active: None
 Watch: 96,000 first resistance
+ToolCalls:
+   - get_account: {}
+   - get_open_orders: {symbol: 'BTCUSDC'}
+   - list_memos: {last_n: 50}
+   - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
+   - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 95400}
+   - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 94900, closePercentage: 100}
 Memo: BTCUSDC|2025-01-15 16:20|LONG 0.001@95,400 SL:94,900✓ Setup:B
 </example>
 ```
@@ -205,6 +226,12 @@ Action: STANDING ASIDE
 Risk: N/A
 Active: BTCUSDC LONG +0.5%
 Watch: BTCUSDC 98,400, ETHUSDC 3,200
+ToolCalls:
+   - get_account: {}
+   - get_positions: {}
+   - list_memos: {last_n: 30}
+   - get_ticker_24hr: {symbol: 'BTCUSDC'}
+   - get_ticker_24hr: {symbol: 'ETHUSDC'}
 Memo: Focus on watchlist only - no FOMO trades
 </example>
 ```

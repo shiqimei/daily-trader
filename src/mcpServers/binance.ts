@@ -104,11 +104,11 @@ const binanceTools: Tool[] = [
   // Common Utils
   {
     name: 'calculate_position_size',
-    description: 'Calculate position size in base asset from USDT amount and current price',
+    description: 'Calculate position size in base asset from USDT amount, considering current leverage and price',
     inputSchema: {
       type: 'object',
       properties: {
-        usdtAmount: { type: 'number', description: 'Amount in USDT' },
+        usdtAmount: { type: 'number', description: 'Amount in USDT to use as margin' },
         symbol: { type: 'string', description: 'Trading pair symbol (e.g., BTCUSDT)' }
       },
       required: ['usdtAmount', 'symbol']
@@ -553,13 +553,21 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         const ticker = await makeRequest(config, '/fapi/v2/ticker/price', { symbol })
         const price = parseFloat(ticker.price)
 
+        // Get account info to check current leverage for the symbol
+        const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
+        const position = account.positions.find((p: any) => p.symbol === symbol)
+        const leverage = position ? parseFloat(position.leverage) : 1
+
         // Get symbol info for precision
         const symbolInfo = await getSymbolInfo(config, symbol)
         const stepSize = parseFloat(
           symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001'
         )
 
-        const quantity = usdtAmount / price
+        // Calculate position size considering leverage
+        // With leverage, the actual capital required = (quantity * price) / leverage
+        // So for a given USDT amount: quantity = (usdtAmount * leverage) / price
+        const quantity = (usdtAmount * leverage) / price
         const roundedQuantity = roundToStepSize(quantity, stepSize)
 
         return {
@@ -571,7 +579,10 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                   usdtAmount,
                   symbol,
                   currentPrice: price,
+                  leverage,
                   positionSize: roundedQuantity,
+                  notionalValue: roundedQuantity * price,
+                  requiredMargin: (roundedQuantity * price) / leverage,
                   stepSize
                 },
                 null,

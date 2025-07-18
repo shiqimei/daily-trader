@@ -195,6 +195,7 @@ ToolCalls:
    - get_account: {}
    - get_open_orders: {symbol: 'BTCUSDC'}
    - list_memos: {last_n: 50}
+   - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 97200}
    - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 96700, closePercentage: 100}
 Decisions: S/R + Liquidity sweep (strongest ICT) + Sweep present = immediate entry
@@ -220,6 +221,7 @@ Active: None
 Watch: 96,000 first resistance
 ToolCalls:
    - get_account: {}
+   - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 95100}
    - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 94600, closePercentage: 100}
 Decisions: S/R + Previous day level + Touch = immediate entry
@@ -245,6 +247,7 @@ Active: None
 Watch: 121,000 resistance
 ToolCalls:
    - get_account: {}
+   - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 120000}
    - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 119500, closePercentage: 100}
 Decisions: Round number + Rejection wick = immediate entry

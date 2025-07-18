@@ -41,7 +41,7 @@ ICT CONFLUENCE (Need at least ONE):
 CONFIRMATION (Need ONE):
 - Rejection candle at level (pin bar, engulfing)
 - Lower timeframe structure break in trade direction
-- Momentum shift (strong move away from level)
+- Momentum shift (0.3% move + volume > 1.5x average)
 ```
 
 ## Market Context Filter
@@ -299,9 +299,9 @@ FULLY_CLOSED → Position exited, logged
 ## Enhanced Exit Management
 
 ### Trailing Stop Rules (After 2R)
-- Bullish: Trail below each new Higher Low
-- Bearish: Trail above each new Lower High
-- Range: Trail at opposite range extreme
+- Update only when new structure point is ≥ 0.3% better than current stop
+- Structure point = Swing low/high (3-candle pattern)
+- Maximum stop distance: 1% from current price
 - Time Exit: Close at BE if no movement 2hrs
 
 ### Market Structure Exits
@@ -326,19 +326,22 @@ Example: ($250 × 2%) / (0.5% × $97,000) × $97,000 = 0.00103 BTC
 - **Entry**: After sweep and reclaim of level
 
 ### Order Blocks
-- **Bullish OB**: Last bearish candle before bullish impulse
+- **Bullish OB**: Last bearish candle before bullish impulse (3+ consecutive candles same direction, total move > 1%)
 - **Bearish OB**: Last bullish candle before bearish impulse
+- **Valid**: Only if untested (price hasn't returned to 50% of OB body)
 - **Entry**: At mid-body of order block candle
 
-### Fair Value Gaps (NEW)
-- **Bullish FVG**: Gap up between candle 1 high and candle 3 low
+### Fair Value Gaps
+- **Bullish FVG**: Gap up between candle 1 high and candle 3 low (gap size ≥ 0.15% of price)
 - **Bearish FVG**: Gap down between candle 1 low and candle 3 high
+- **Valid**: Only if unfilled and within last 10 candles
 - **Entry**: Within FVG with other confluence
 
 ### Market Structure
 - **Bullish**: Series of HH and HL
 - **Bearish**: Series of LH and LL
-- **Break**: Close beyond previous high/low
+- **Structure Break**: Close beyond previous swing high/low (minimum 0.2% beyond)
+- **Swing**: 3-candle pattern (high/low with lower highs/lows on each side)
 
 ### Kill Zones (Higher Probability Windows)
 - **London**: 07:00-10:00 UTC (higher volume)
@@ -348,14 +351,26 @@ Example: ($250 × 2%) / (0.5% × $97,000) × $97,000 = 0.00103 BTC
 ## S/R Level Identification
 
 ### Major S/R (Use for Setup A)
-- 3+ touches on 4H chart
-- Clear reaction zones
+- Exactly 3 or more touches (wicks or bodies) within 0.1% range on 4H chart
+- Touch = Price reaches within 0.1% of level and reverses minimum 0.5%
+- Reaction Zone = Price reversal of minimum 1% from level within 3 candles
 - Round numbers (psychological levels)
 
 ### Minor S/R (Use for targets)
 - 2+ touches on 1H chart
 - Previous day high/low
 - Weekly pivots
+
+## Confirmation Definitions
+
+### Rejection Candles
+- **Pin Bar**: Shadow ≥ 2x body size, close within 30% of range
+- **Engulfing**: Body completely covers previous candle body
+- **Momentum Bar**: Body ≥ 75% of total range, close near high/low
+
+### Momentum Confirmation
+- Price moves 0.3% away from level within 2 candles
+- Volume > 1.5x the 20-period average
 
 ## Mental Framework
 

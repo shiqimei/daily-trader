@@ -103,18 +103,6 @@ async function makeRequest(
 const binanceTools: Tool[] = [
   // Common Utils
   {
-    name: 'calculate_position_size',
-    description: 'Calculate position size in base asset from USDT amount and current price',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        usdtAmount: { type: 'number', description: 'Amount in USDT' },
-        symbol: { type: 'string', description: 'Trading pair symbol (e.g., BTCUSDT)' }
-      },
-      required: ['usdtAmount', 'symbol']
-    }
-  },
-  {
     name: 'get_server_time',
     description: 'Get Binance server time',
     inputSchema: {
@@ -548,40 +536,6 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
   try {
     switch (name) {
       // Common Utils
-      case 'calculate_position_size': {
-        const { usdtAmount, symbol } = args as { usdtAmount: number; symbol: string }
-        const ticker = await makeRequest(config, '/fapi/v2/ticker/price', { symbol })
-        const price = parseFloat(ticker.price)
-
-        // Get symbol info for precision
-        const symbolInfo = await getSymbolInfo(config, symbol)
-        const stepSize = parseFloat(
-          symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.stepSize || '0.00001'
-        )
-
-        const quantity = usdtAmount / price
-        const roundedQuantity = roundToStepSize(quantity, stepSize)
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                {
-                  usdtAmount,
-                  symbol,
-                  currentPrice: price,
-                  positionSize: roundedQuantity,
-                  stepSize
-                },
-                null,
-                2
-              )
-            }
-          ]
-        }
-      }
-
       case 'get_server_time': {
         const result = await makeRequest(config, '/fapi/v1/time')
         return {

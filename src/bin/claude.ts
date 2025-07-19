@@ -1,8 +1,9 @@
 import { traderPrompt } from '@/tradingSystem'
+import { createLogger } from '@/utils/logger'
 import { query } from '@anthropic-ai/claude-code'
 import dayjs from 'dayjs'
 
-const HOME_PATH = process.env.HOME
+const logger = createLogger('claude')
 
 async function sleep(seconds: number) {
   return new Promise(resolve => setTimeout(resolve, seconds * 1000))
@@ -82,8 +83,7 @@ async function runClaude() {
         }
       },
       executable: 'node',
-      pathToClaudeCodeExecutable:
-        process.env.CLAUDE_CODE_EXECUTABLE || `${HOME_PATH}/.bun/bin/claude`
+      pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_EXECUTABLE
     }
   })) {
     switch (message.type) {
@@ -94,23 +94,23 @@ async function runClaude() {
         const { content } = message.message
         for (const part of content) {
           if (part.type === 'text') {
-            console.log(part.text)
+            logger.info(part.text)
           } else if (part.type === 'tool_use') {
-            console.log('[Tool use]', part.name, part.input)
+            logger.debug({ tool: part.name, input: part.input }, 'Tool use')
           } else if (part.type === 'tool_result') {
-            console.log(part)
+            logger.debug({ part }, 'Tool result part')
             for (const item of part.content) {
               switch (item.type) {
                 case 'text':
-                  console.log('[Tool result]', item.text)
+                  logger.debug({ result: item.text }, 'Tool result text')
                   break
                 default:
-                  console.log('[Tool result]', item)
+                  logger.debug({ result: item }, 'Tool result item')
                   break
               }
             }
           } else {
-            console.log(part)
+            logger.debug({ part }, 'Unknown part type')
           }
         }
         break
@@ -118,7 +118,7 @@ async function runClaude() {
       case 'user': {
         const { content } = message.message
         for (const part of content) {
-          console.log(part)
+          logger.debug({ part }, 'User message part')
         }
         break
       }
@@ -127,10 +127,10 @@ async function runClaude() {
           case 'success':
             break
           case 'error_max_turns':
-            console.error('Error:', message)
+            logger.error({ error: message }, 'Max turns error')
             break
           case 'error_during_execution':
-            console.error('Error:', message)
+            logger.error({ error: message }, 'Error during execution')
             break
         }
         break
@@ -144,7 +144,7 @@ while (true) {
     await runClaude()
     await sleep(60 * 3) // sleep 3 minutes
   } catch (error) {
-    console.error('Error:', error)
+    logger.error({ error }, 'Error in runClaude')
     await sleep(10) // sleep 10 seconds
   }
 }

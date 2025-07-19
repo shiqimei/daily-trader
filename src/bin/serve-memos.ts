@@ -6,6 +6,7 @@
  */
 
 import { db } from '@/database'
+import { createLogger } from '@/utils/logger'
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 
 interface Memo {
@@ -16,6 +17,7 @@ interface Memo {
 }
 
 const PORT = 3001
+const logger = createLogger('serve-memos')
 
 // Prepare statements for better performance
 const getAllMemosStmt = db.prepare(`
@@ -38,7 +40,7 @@ function getMemos(limit?: number): Memo[] {
     }
     return getAllMemosStmt.all() as Memo[]
   } catch (error) {
-    console.error('Database error:', error)
+    logger.error({ error }, 'Database error')
     return []
   }
 }
@@ -499,5 +501,5 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
 })
 
 server.listen(PORT, () => {
-  console.log(`Memo server running at http://localhost:${PORT}`)
+  logger.info({ port: PORT }, `Memo server running at http://localhost:${PORT}`)
 })

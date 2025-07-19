@@ -1,1 +1,2 @@
+- @tradingSystem.md is our core "code" for agent-based trading. Make changes to it in caution.
 - ALWAYS make minimal changes to @tradingSystem.md

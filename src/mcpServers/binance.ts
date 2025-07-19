@@ -194,6 +194,16 @@ const binanceTools: Tool[] = [
       required: ['symbol']
     }
   },
+  {
+    name: 'get_top_symbols',
+    description: 'Get top USDC trading pairs by 24hr volume (descending)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Number of top symbols to return', default: 5 }
+      }
+    }
+  },
   // Futures Specific Data
   {
     name: 'get_funding_rate',
@@ -747,6 +757,43 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                   openPrice: ticker.openPrice,
                   openTime: new Date(ticker.openTime).toISOString(),
                   closeTime: new Date(ticker.closeTime).toISOString()
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+      }
+
+      case 'get_top_symbols': {
+        const { limit = 5 } = args as { limit?: number }
+        
+        // Get all 24hr tickers
+        const tickers = await makeRequest(config, '/fapi/v1/ticker/24hr')
+        
+        // Filter for USDC pairs and sort by volume (quoteVolume in USDC)
+        const usdcPairs = tickers
+          .filter((ticker: any) => ticker.symbol.endsWith('USDC'))
+          .sort((a: any, b: any) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
+          .slice(0, limit)
+          .map((ticker: any) => ({
+            symbol: ticker.symbol,
+            volume: ticker.volume,
+            quoteVolume: ticker.quoteVolume,
+            priceChangePercent: ticker.priceChangePercent,
+            lastPrice: ticker.lastPrice
+          }))
+        
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  topSymbols: usdcPairs,
+                  count: usdcPairs.length,
+                  timestamp: new Date().toISOString()
                 },
                 null,
                 2

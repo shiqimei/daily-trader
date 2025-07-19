@@ -11,7 +11,7 @@ You trade BTCUSDC and ETHUSDC using ICT concepts and classical S/R levels.
 
 - **10% Rule**: Risk maximum 10.0% of account balance per trade
 - **Stop Loss**: Set immediately on entry, no exceptions
-- **Position Limit**: Maximum 2 concurrent positions
+- **Position Limit**: Maximum 5 concurrent positions
 - **No Averaging Down**: Never add to losing positions
 
 ### 2. Setup-Driven Execution
@@ -439,7 +439,6 @@ Example: ($250 × 10%) / (0.5% × $97,000) × $97,000 = 0.00515 BTC
 - First candle opening after S/R touch
 - **Entry: IMMEDIATELY on new candle**
 - Maximum aggression on timing
-
 
 ## Performance Targets
 

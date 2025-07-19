@@ -33,6 +33,7 @@ async function runClaude() {
       maxTurns: 999,
       customSystemPrompt: traderPrompt,
       allowedTools: [
+        'mcp__binance__get_top_symbols',
         'mcp__binance__calculate_position_size',
         'mcp__binance__get_server_time',
         'mcp__binance__get_klines',

@@ -102,10 +102,12 @@ CHECK BEFORE ANY TRADE:
    → mcp__binance__cancel_order (keep only one)
    ```
 
-2. **Market Context**
+2. **Market Context & Sentiment**
 
    ```
+   mcp__binance__get_open_interest → Get OI, whale ratios, sentiment, basis for each symbol
    Trend: Identify on 4H (trending/ranging)
+   Market Sentiment: Analyze whale positioning and retail sentiment
    ```
 
 3. **Market Analysis**
@@ -167,6 +169,11 @@ Confirm: [Liquidity Sweep/Touch/Rejection Wick/Momentum Bar/First Candle/WAITING
 Risk: Entry:[price] SL:[price] TP:[price] $[risk] ([%])
 Active: [position status with P/L]
 Trailing: [YES/NO] @ [stop price] (if position > 2R)
+Market Data:
+   - OI: [value] ([USDT value])
+   - Whale L/S: 5m:[ratio] 15m:[ratio] 30m:[ratio]
+   - Sentiment: 5m:[ratio] 15m:[ratio] 30m:[ratio]
+   - Basis: 5m:[%] 15m:[%] 30m:[%]
 Watch: [next key level]
 ToolCalls: # add_memo is not included in ToolCalls
    - [function_name]: [function_args]
@@ -192,10 +199,17 @@ ICT: Liquidity swept - SSL at 97,000 taken
 Confirm: Liquidity Sweep - SSL swept present
 Risk: Entry:97,200 SL:96,700 TP:98,400 $25.00 (10.0%)
 Active: None
+Trailing: NO
+Market Data:
+   - OI: [value] ([USDT value])
+   - Whale L/S: 5m:[ratio] 15m:[ratio] 30m:[ratio]
+   - Sentiment: 5m:[ratio] 15m:[ratio] 30m:[ratio]
+   - Basis: 5m:[%] 15m:[%] 30m:[%]
 Watch: 98,400 resistance
 ToolCalls:
    - get_account: {}
    - get_open_orders: {symbol: 'BTCUSDC'}
+   - get_open_interest: {symbol: 'BTCUSDC'}
    - list_memos: {last_n: 50}
    - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 97200}
@@ -223,6 +237,8 @@ Active: None
 Watch: 96,000 first resistance
 ToolCalls:
    - get_account: {}
+   - get_open_orders: {symbol: 'BTCUSDC'}
+   - get_open_interest: {symbol: 'BTCUSDC'}
    - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 95100}
    - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 94600, closePercentage: 100}
@@ -249,6 +265,8 @@ Active: None
 Watch: 121,000 resistance
 ToolCalls:
    - get_account: {}
+   - get_open_orders: {symbol: 'BTCUSDC'}
+   - get_open_interest: {symbol: 'BTCUSDC'}
    - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 120000}
    - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 119500, closePercentage: 100}
@@ -274,6 +292,8 @@ Watch: 115,000 support or 116,000 resistance
 ToolCalls:
    - get_account: {}
    - get_positions: {}
+   - get_open_interest: {symbol: 'BTCUSDC'}
+   - get_open_interest: {symbol: 'ETHUSDC'}
    - list_memos: {last_n: 30}
 Decisions: No S/R level within 0.5% - waiting for valid setup
 </example>

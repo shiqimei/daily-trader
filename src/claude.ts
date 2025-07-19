@@ -142,9 +142,9 @@ async function runClaude() {
 while (true) {
   try {
     await runClaude()
-    await sleep(60 * 5) // sleep 5 minutes
+    await sleep(60 * 3) // sleep 3 minutes
   } catch (error) {
     console.error('Error:', error)
-    await sleep(60 * 1) // sleep 1 minute
+    await sleep(10) // sleep 10 seconds
   }
 }

@@ -4,7 +4,24 @@ import { query } from '@anthropic-ai/claude-code'
 import dayjs from 'dayjs'
 
 async function sleep(seconds: number) {
-  return new Promise(resolve => setTimeout(resolve, seconds * 1000))
+  const totalMs = seconds * 1000
+  const startTime = Date.now()
+
+  return new Promise(resolve => {
+    console.log('\n')
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime
+      const remaining = Math.max(0, totalMs - elapsed) / 1000
+
+      if (remaining <= 0) {
+        clearInterval(interval)
+        process.stdout.write('\r\x1b[K')
+        resolve(undefined)
+      } else {
+        process.stdout.write(`\rcontinue in ${remaining.toFixed(1)}s`)
+      }
+    }, 100)
+  })
 }
 
 async function runClaude() {

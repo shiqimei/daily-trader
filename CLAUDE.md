@@ -1,0 +1,1 @@
+- ALWAYS make minimal changes to @tradingSystem.md

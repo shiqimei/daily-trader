@@ -1,31 +1,13 @@
 {
-  "name": "daily-trader",
+  "name": "ict-sr-confirmation-trading-system",
   "version": "1.0.0",
-  "description": "AWS Bedrock Claude Streaming Test Suite with bearer token authentication",
   "main": "dist/main.js",
   "type": "module",
   "scripts": {
-    "claude": "npx tsx src/claude.ts",
-    "build": "tsc",
-    "start": "node dist/main.js",
-    "dev": "tsx src/main.ts",
-    "dev:watch": "nodemon --exec tsx src/main.ts",
-    "test": "tsx src/main.ts",
-    "clean": "rm -rf dist",
-    "type-check": "tsc --noEmit",
-    "mcp:inspect": "npx @modelcontextprotocol/inspector@latest"
+    "start": "npx tsx src/claude.ts",
+    "memo-server": "npx tsx scripts/serve-memo.ts",
+    "inspect": "npx @modelcontextprotocol/inspector@latest"
   },
-  "keywords": [
-    "ai",
-    "streaming",
-    "bedrock",
-    "claude",
-    "aws",
-    "typescript",
-    "nodejs"
-  ],
-  "author": "",
-  "license": "ISC",
   "packageManager": "pnpm@10.13.1",
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.53",

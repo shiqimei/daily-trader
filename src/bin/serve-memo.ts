@@ -5,49 +5,41 @@
  * It renders all memos as a modern responsive web ui.
  */
 
-import Database from "better-sqlite3";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
-import { createServer, IncomingMessage, ServerResponse } from "http";
+import { db } from '@/database'
+import { createServer, IncomingMessage, ServerResponse } from 'http'
 
 interface Memo {
-  id: number;
-  date: string;
-  content: string;
-  created_at: string;
+  id: number
+  date: string
+  content: string
+  created_at: string
 }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const DB_PATH = join(__dirname, "../src/mcpServers/memo.sqlite");
-const PORT = 3001;
-
-const db = new Database(DB_PATH);
+const PORT = 3001
 
 // Prepare statements for better performance
 const getAllMemosStmt = db.prepare(`
   SELECT id, date, content, created_at 
   FROM memos 
   ORDER BY date DESC, created_at DESC
-`);
+`)
 
 const getMemosWithLimitStmt = db.prepare(`
   SELECT id, date, content, created_at 
   FROM memos 
   ORDER BY date DESC, created_at DESC 
   LIMIT ?
-`);
+`)
 
 function getMemos(limit?: number): Memo[] {
   try {
     if (limit) {
-      return getMemosWithLimitStmt.all(limit) as Memo[];
+      return getMemosWithLimitStmt.all(limit) as Memo[]
     }
-    return getAllMemosStmt.all() as Memo[];
+    return getAllMemosStmt.all() as Memo[]
   } catch (error) {
-    console.error("Database error:", error);
-    return [];
+    console.error('Database error:', error)
+    return []
   }
 }
 
@@ -60,23 +52,28 @@ function formatMemoContent(content: string): string {
     .join('\n')
     .replace(/\n/g, '<br>')
     .replace(/===/g, '<hr>')
-    .replace(/(^|<br>)(Account|Positions|Open Orders|Action|Setup|Risk|Active|Watch|ToolCalls|Decisions):/g, '$1<strong>$2:</strong>');
+    .replace(
+      /(^|<br>)(Account|Positions|Open Orders|Action|Setup|Risk|Active|Watch|ToolCalls|Decisions):/g,
+      '$1<strong>$2:</strong>'
+    )
 }
 
 function formatDateTime(dateStr: string): string {
   try {
     // The dateStr is in format "YYYY-MM-DD HH:MM:SS" and represents UTC time
     // Convert to UTC+8 timezone
-    const utcDate = new Date(dateStr + 'Z');
-    const utc8Date = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000));
-    return utc8Date.toLocaleString('en-US', { timeZone: 'UTC' });
+    const utcDate = new Date(dateStr + 'Z')
+    const utc8Date = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000)
+    return utc8Date.toLocaleString('en-US', { timeZone: 'UTC' })
   } catch {
-    return dateStr;
+    return dateStr
   }
 }
 
 function renderHTML(memos: Memo[]): string {
-  const memoCards = memos.map(memo => `
+  const memoCards = memos
+    .map(
+      memo => `
     <div class="memo-card">
       <div class="memo-header">
         <div class="memo-id">Memo #${memo.id}</div>
@@ -86,7 +83,9 @@ function renderHTML(memos: Memo[]): string {
         ${formatMemoContent(memo.content)}
       </div>
     </div>
-  `).join('');
+  `
+    )
+    .join('')
 
   return `
 <!DOCTYPE html>
@@ -334,7 +333,11 @@ function renderHTML(memos: Memo[]): string {
   <div class="container">
 
     <div class="memo-grid" id="memoGrid">
-      ${memos.length > 0 ? memoCards : '<div class="no-memos">No trading memos found. Start trading to see decision history here.</div>'}
+      ${
+        memos.length > 0
+          ? memoCards
+          : '<div class="no-memos">No trading memos found. Start trading to see decision history here.</div>'
+      }
     </div>
   </div>
 
@@ -467,35 +470,34 @@ function renderHTML(memos: Memo[]): string {
   </script>
 </body>
 </html>
-  `;
+  `
 }
 
 const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-  const url = new URL(req.url!, `http://${req.headers.host}`);
-  
+  const url = new URL(req.url!, `http://${req.headers.host}`)
+
   if (url.pathname === '/') {
-    const limit = url.searchParams.get('limit');
-    const memos = getMemos(limit ? parseInt(limit) : undefined);
-    
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(renderHTML(memos));
-    return;
+    const limit = url.searchParams.get('limit')
+    const memos = getMemos(limit ? parseInt(limit) : undefined)
+
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    res.end(renderHTML(memos))
+    return
   }
-  
+
   if (url.pathname === '/api/memos') {
-    const limit = url.searchParams.get('limit');
-    const memos = getMemos(limit ? parseInt(limit) : undefined);
-    
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(memos));
-    return;
+    const limit = url.searchParams.get('limit')
+    const memos = getMemos(limit ? parseInt(limit) : undefined)
+
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(memos))
+    return
   }
-  
-  res.writeHead(404, { 'Content-Type': 'text/plain' });
-  res.end('Not Found');
-});
+
+  res.writeHead(404, { 'Content-Type': 'text/plain' })
+  res.end('Not Found')
+})
 
 server.listen(PORT, () => {
-  console.log(`Memo server running at http://localhost:${PORT}`);
-  console.log(`Database: ${DB_PATH}`);
-});
+  console.log(`Memo server running at http://localhost:${PORT}`)
+})

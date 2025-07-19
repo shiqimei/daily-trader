@@ -103,3 +103,4 @@ Thumbs.db
 
 # Database files
 *.sqlite
+*.db

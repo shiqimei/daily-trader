@@ -1,4 +1,5 @@
 #!/usr/bin/env -S npx tsx
+import { db } from '@/database'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
@@ -6,12 +7,7 @@ import {
   ListToolsRequestSchema,
   Tool
 } from '@modelcontextprotocol/sdk/types.js'
-import Database from 'better-sqlite3'
-import { dirname, join } from 'path'
-import { fileURLToPath } from 'url'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+import { type Database } from 'better-sqlite3'
 
 interface AddMemoArgs {
   date: string
@@ -56,7 +52,7 @@ const memoTools: Tool[] = [
       properties: {
         last_n: {
           type: 'number',
-          description: 'Number of recent memos to retrieve (default: 10, max: 30)',
+          description: 'Number of recent memos to retrieve (default: 10, max: 30)'
         }
       }
     }
@@ -64,10 +60,8 @@ const memoTools: Tool[] = [
 ]
 
 class MemoDatabase {
-  private db: Database.Database
-
-  constructor(dbPath: string) {
-    this.db = new Database(dbPath)
+  constructor(private db: Database = db) {
+    this.db = db
     this.initDatabase()
   }
 
@@ -83,9 +77,7 @@ class MemoDatabase {
   }
 
   addMemo(date: string, content: string): Memo {
-    const stmt = this.db.prepare(
-      'INSERT INTO memos (date, content) VALUES (?, ?)'
-    )
+    const stmt = this.db.prepare('INSERT INTO memos (date, content) VALUES (?, ?)')
     const result = stmt.run(date, content)
 
     const memo = this.db
@@ -105,8 +97,7 @@ class MemoDatabase {
   }
 }
 
-const dbPath = join(__dirname, 'memo.sqlite')
-const memoDb = new MemoDatabase(dbPath)
+const memoDb = new MemoDatabase(db)
 
 const server = new Server(
   {

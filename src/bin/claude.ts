@@ -1,6 +1,6 @@
+import { traderPrompt } from '@/tradingSystem'
 import { query } from '@anthropic-ai/claude-code'
 import dayjs from 'dayjs'
-import { traderPrompt } from './prompts'
 
 const HOME_PATH = process.env.HOME
 

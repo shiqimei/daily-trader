@@ -100,12 +100,16 @@ CHECK BEFORE ANY TRADE:
 
 ### On User Message: `now:{timestamp}`
 
-1. **Account Status**
+1. **Account Status & Housekeeping**
 
    ```
    mcp__binance__get_account → Check balance, positions
    mcp__binance__get_open_orders → Check open orders
    mcp__memo__list_memos → Review recent trades
+   
+   # Housekeeping: Clean up duplicate orders
+   If duplicate stop/TP orders exist at same price:
+   → mcp__binance__cancel_order (keep only one)
    ```
 
 2. **Market Context**
@@ -139,9 +143,9 @@ CHECK BEFORE ANY TRADE:
       Entry → Set SL immediately → mcp**binance**set_stop_loss
 
    2. **Progressive Position Adjustment**
-      1R → Move SL to BE → mcp**binance**set_stop_loss
-      2R → Close 50% + Trail at structure → mcp**binance**set_take_profit (50%) + mcp**binance**set_stop_loss (trail)
-      3R+ → Trail remaining at structure breaks → mcp**binance**set_stop_loss (trail)
+      1R → Move SL to BE → mcp__binance__set_stop_loss
+      2R → Close 50% + Trail at structure → mcp__binance__set_take_profit (50%) + mcp__binance__set_trailing_stop
+      3R+ → Trail remaining at structure breaks → mcp__binance__set_trailing_stop
 
 6. **Update Memo**
    ```
@@ -166,6 +170,7 @@ ICT: [Liquidity swept/Order block/Round/Day HL/Retest/FVG/Kill zone/50%/Trendlin
 Confirm: [Liquidity Sweep/Touch/Rejection Wick/Momentum Bar/First Candle/WAITING]
 Risk: Entry:[price] SL:[price] TP:[price] $[risk] ([%])
 Active: [position status with P/L]
+Trailing: [YES/NO] @ [stop price] (if position > 2R)
 Watch: [next key level]
 ToolCalls: # add_memo is not included in ToolCalls
    - [function_name]: [function_args]
@@ -313,8 +318,24 @@ FULLY_CLOSED → Position exited, logged
 
 ### Trailing Stop Rules (After 2R)
 
+- Use mcp__binance__set_trailing_stop for automatic trailing
 - Update only when new structure point is ≥ 0.3% better than current stop
 - Structure point = Swing low/high (3-candle pattern)
+- Trail distance: 0.5% from structure point (allows for minor retracements)
+
+#### Implementation Details:
+```
+For LONG positions > 2R:
+- Identify recent swing low (3-candle pattern)
+- New stop = Swing low - 0.5%
+- Only update if new stop ≥ current stop + 0.3%
+- Use: mcp__binance__set_trailing_stop(symbol, triggerPrice, closePercentage: 100)
+
+For SHORT positions > 2R:
+- Identify recent swing high (3-candle pattern)
+- New stop = Swing high + 0.5%
+- Only update if new stop ≤ current stop - 0.3%
+```
 
 ### Market Structure Exits
 

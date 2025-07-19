@@ -4,7 +4,7 @@
   "main": "dist/main.js",
   "type": "module",
   "scripts": {
-    "start": "npx tsx src/claude.ts",
+    "start": "npx tsx src/main.ts",
     "memo-server": "npx tsx scripts/serve-memo.ts",
     "inspect": "npx @modelcontextprotocol/inspector@latest"
   },

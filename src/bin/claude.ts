@@ -1,9 +1,7 @@
 import { traderPrompt } from '@/tradingSystem'
-import { createLogger } from '@/utils/logger'
+import { logger } from '@/utils/logger'
 import { query } from '@anthropic-ai/claude-code'
 import dayjs from 'dayjs'
-
-const logger = createLogger('claude')
 
 async function sleep(seconds: number) {
   return new Promise(resolve => setTimeout(resolve, seconds * 1000))

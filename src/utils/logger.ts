@@ -21,7 +21,3 @@ export const logger = pino({
   },
   timestamp: pino.stdTimeFunctions.isoTime
 })
-
-export const createLogger = (name: string) => {
-  return logger.child({ module: name })
-}

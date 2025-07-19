@@ -6,7 +6,7 @@
  */
 
 import { db } from '@/database'
-import { createLogger } from '@/utils/logger'
+import { logger } from '@/utils/logger'
 import { createServer, IncomingMessage, ServerResponse } from 'http'
 
 interface Memo {
@@ -17,7 +17,6 @@ interface Memo {
 }
 
 const PORT = 3001
-const logger = createLogger('serve-memos')
 
 // Prepare statements for better performance
 const getAllMemosStmt = db.prepare(`

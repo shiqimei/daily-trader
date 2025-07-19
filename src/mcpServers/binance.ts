@@ -173,19 +173,8 @@ const binanceTools: Tool[] = [
     }
   },
   {
-    name: 'get_ticker',
-    description: 'Get latest price ticker for a symbol',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        symbol: { type: 'string', description: 'Trading pair symbol' }
-      },
-      required: ['symbol']
-    }
-  },
-  {
     name: 'get_ticker_24hr',
-    description: 'Get 24hr ticker statistics (high, low, volume, % change)',
+    description: 'Get 24hr ticker statistics including last price, high, low, volume, and price change percentage',
     inputSchema: {
       type: 'object',
       properties: {
@@ -560,8 +549,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
       // Common Utils
       case 'calculate_position_size': {
         const { usdtAmount, symbol } = args as { usdtAmount: number; symbol: string }
-        const ticker = await makeRequest(config, '/fapi/v2/ticker/price', { symbol })
-        const price = parseFloat(ticker.price)
+        const ticker = await makeRequest(config, '/fapi/v1/ticker/24hr', { symbol })
+        const price = parseFloat(ticker.lastPrice)
 
         // Get account info to check current leverage for the symbol
         const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
@@ -724,18 +713,6 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
       }
 
-      case 'get_ticker': {
-        const { symbol } = args as { symbol: string }
-        const ticker = await makeRequest(config, '/fapi/v2/ticker/price', { symbol })
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(ticker, null, 2)
-            }
-          ]
-        }
-      }
 
       case 'get_ticker_24hr': {
         const { symbol } = args as { symbol: string }
@@ -883,8 +860,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           makeRequest(config, '/futures/data/globalLongShortAccountRatio', { symbol, period: '5m', limit: 1 }),
           makeRequest(config, '/futures/data/globalLongShortAccountRatio', { symbol, period: '15m', limit: 1 }),
           makeRequest(config, '/futures/data/globalLongShortAccountRatio', { symbol, period: '30m', limit: 1 }),
-          // Current price
-          makeRequest(config, '/fapi/v2/ticker/price', { symbol }),
+          // Current price from 24hr ticker
+          makeRequest(config, '/fapi/v1/ticker/24hr', { symbol }),
           // Mark price for basis calculation
           makeRequest(config, '/fapi/v1/premiumIndex', { symbol }),
           // Klines for basis calculation
@@ -894,7 +871,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         ])
         
         // Calculate basis (spot - futures) for each timeframe
-        const currentPrice = parseFloat(ticker.price)
+        const currentPrice = parseFloat(ticker.lastPrice)
         const basis5m = ((currentPrice - parseFloat(klines5m[0][4])) / parseFloat(klines5m[0][4]) * 100).toFixed(4)
         const basis15m = ((currentPrice - parseFloat(klines15m[0][4])) / parseFloat(klines15m[0][4]) * 100).toFixed(4)
         const basis30m = ((currentPrice - parseFloat(klines30m[0][4])) / parseFloat(klines30m[0][4]) * 100).toFixed(4)

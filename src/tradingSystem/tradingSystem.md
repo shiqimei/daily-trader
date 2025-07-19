@@ -113,6 +113,7 @@ CHECK BEFORE ANY TRADE:
 
    ```
    For each symbol in top 5:
+   → mcp__binance__get_ticker_24hr → Get current price, 24hr stats
    → mcp__binance__get_open_interest → Get OI, whale ratios, sentiment, basis
    Trend: Identify on 4H (trending/ranging) for each symbol
    Market Sentiment: Analyze whale positioning and retail sentiment

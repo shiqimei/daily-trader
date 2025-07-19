@@ -96,7 +96,7 @@ async function runClaude() {
           } else if (part.type === 'tool_use') {
             logger.debug({ tool: part.name, input: part.input }, 'Tool use')
           } else if (part.type === 'tool_result') {
-            logger.debug({ part }, 'Tool result part')
+            logger.debug(part, 'Tool result part')
             for (const item of part.content) {
               switch (item.type) {
                 case 'text':
@@ -108,7 +108,7 @@ async function runClaude() {
               }
             }
           } else {
-            logger.debug({ part }, 'Unknown part type')
+            logger.debug(part, 'Unknown part type')
           }
         }
         break
@@ -116,7 +116,7 @@ async function runClaude() {
       case 'user': {
         const { content } = message.message
         for (const part of content) {
-          logger.debug({ part }, 'User message part')
+          logger.debug(part, 'User message part')
         }
         break
       }
@@ -125,10 +125,10 @@ async function runClaude() {
           case 'success':
             break
           case 'error_max_turns':
-            logger.error({ error: message }, 'Max turns error')
+            logger.error(message, 'Max turns error')
             break
           case 'error_during_execution':
-            logger.error({ error: message }, 'Error during execution')
+            logger.error(message, 'Error during execution')
             break
         }
         break

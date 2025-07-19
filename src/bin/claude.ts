@@ -18,7 +18,7 @@ async function sleep(seconds: number) {
         process.stdout.write('\r\x1b[K')
         resolve(undefined)
       } else {
-        process.stdout.write(`\rcontinue in ${remaining.toFixed(1)}s`)
+        process.stdout.write(`${remaining.toFixed(1)}s`)
       }
     }, 100)
   })

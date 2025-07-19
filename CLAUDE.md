@@ -1,6 +1,6 @@
-- @tradingSystem.md is our core "code" for agent-based trading. Make changes to it in caution.
+- @src/tradingSystem/tradingSystem.md is our core "code" for agent-based trading. Make changes to it with caution.
 
 # MANDATORY ACTIONS
 
-- ALWAYS make minimal changes to @tradingSystem.md
-- ALWAYS make sure all rules in @tradingSystem.md is objective, NOT subjective.
+- ALWAYS keep @src/tradingSystem/tradingSystem.md subjective, precise, and maintainable
+- ALWAYS make minimal changes to @src/tradingSystem/tradingSystem.md

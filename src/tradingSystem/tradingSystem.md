@@ -32,22 +32,22 @@ STOP: 0.5% beyond S/R level (or structure low/high if closer by ≥0.3%)
 TARGET: Next major S/R or liquidity pool (minimum 2R)
 
 ICT CONFLUENCE (Need at least ONE - Priority Order):
-- Liquidity just swept (SSL/BSL) ⭐⭐⭐ [STRONGEST SIGNAL]
-- At order block level ⭐⭐
-- Round number test (000/500 levels) ⭐⭐
-- Previous day high/low test ⭐⭐
-- Structure break retest (price returns within 0.2% of breakout level) ⭐
-- Fair Value Gap (FVG) present ⭐
-- Kill zone active (London/NY) ⭐
-- 50% retracement of move >2.0% ⭐
-- Trendline touch (3+ points, each within 0.1% of line) ⭐
-- Momentum divergence (3+ candles of price/RSI opposite movement) ⭐
+1. Liquidity just swept (SSL/BSL) ⭐⭐⭐ [STRONGEST SIGNAL]
+2. At order block level (70.0% of OB body) ⭐⭐
+3. Round number test (000/500 levels) ⭐⭐
+4. Previous day high/low test ⭐⭐
+5. Structure break retest (price returns within 0.2% of breakout level) ⭐
+6. Fair Value Gap (FVG) present (gap size ≥0.1%) ⭐
+7. Kill zone active (London: 07:00-10:00 UTC, NY: 12:00-15:00 UTC) ⭐
+8. 50% retracement of move >2.0% ⭐
+9. Trendline touch (3+ points, each within 0.1% of line) ⭐
+10. Momentum divergence (3+ candles of price/RSI opposite movement) ⭐
 
 CONFIRMATION (Need ONE - MORE AGGRESSIVE):
 - Liquidity sweep present (price sweeps SSL/BSL) → IMMEDIATE ENTRY
-- Touch of S/R level (price reaches level) → IMMEDIATE ENTRY
-- Rejection wick forming (shadow > body) → IMMEDIATE ENTRY
-- Momentum bar starting (body > 50% of range) → IMMEDIATE ENTRY
+- Touch of S/R level (price within 0.1% of level) → IMMEDIATE ENTRY
+- Rejection wick forming (wick length > body length) → IMMEDIATE ENTRY
+- Momentum bar starting (body > 50.0% of candle range) → IMMEDIATE ENTRY
 - First candle after level touch → IMMEDIATE ENTRY
 ```
 
@@ -69,19 +69,9 @@ CHECK BEFORE ANY TRADE:
    ├─ At major S/R? (±0.5%) → PROCEED
    └─ Not at S/R? → WAIT
 
-3. CHECK ICT CONFLUENCE (Priority Order)
-   ├─ Liquidity swept? → ✓✓✓ [STRONGEST]
-   ├─ At order block? → ✓✓
-   ├─ Round number? → ✓✓
-   ├─ Previous day H/L? → ✓✓
-   ├─ Structure retest? → ✓
-   ├─ FVG present? → ✓
-   ├─ In kill zone? → ✓
-   ├─ 50% retracement? → ✓
-   ├─ Trendline touch? → ✓
-   └─ Momentum divergence? → ✓
-       └─ Have ANY? → PROCEED
-       └─ Have NONE? → WAIT
+3. CHECK ICT CONFLUENCE (See numbered list above)
+   ├─ Have ANY from list 1-10? → PROCEED
+   └─ Have NONE? → WAIT
 
 4. GET CONFIRMATION (MORE AGGRESSIVE)
    ├─ Liquidity sweep present? → ENTER IMMEDIATELY
@@ -210,7 +200,7 @@ ToolCalls:
    - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 97200}
    - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 96700, closePercentage: 100}
-Decisions: S/R + Liquidity sweep (strongest ICT) + Sweep present = immediate entry
+Decisions: S/R level met + ICT confluence (liquidity sweep) + Confirmation present
 </example>
 ```
 
@@ -236,7 +226,7 @@ ToolCalls:
    - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 95100}
    - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 94600, closePercentage: 100}
-Decisions: S/R + Previous day level + Touch = immediate entry
+Decisions: S/R level met + ICT confluence (previous day H/L) + Touch confirmation
 </example>
 ```
 
@@ -262,7 +252,7 @@ ToolCalls:
    - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
    - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 120000}
    - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 119500, closePercentage: 100}
-Decisions: Round number + Rejection wick = immediate entry
+Decisions: S/R level met + ICT confluence (round number) + Rejection wick confirmation
 </example>
 ```
 
@@ -285,7 +275,7 @@ ToolCalls:
    - get_account: {}
    - get_positions: {}
    - list_memos: {last_n: 30}
-Decisions: No S/R level - waiting for price to reach key levels
+Decisions: No S/R level within 0.5% - waiting for valid setup
 </example>
 ```
 
@@ -320,35 +310,35 @@ PARTIAL_CLOSED → 50% taken, trailing remainder
 FULLY_CLOSED → Position exited, logged
 ```
 
-## Enhanced Exit Management
+## Exit Management (Complete Rules)
+
+### Progressive Exit Strategy
+
+1. **At 1R Profit**: Move SL to breakeven (entry price)
+2. **At 2R Profit**: Close 50.0% of position + activate trailing stop
+3. **After 2R**: Trail stop at structure breaks using rules below
 
 ### Trailing Stop Rules (After 2R)
 
-- # Use `mcp__binance__set_trailing_stop` for automatic trailing
-- Update only when new structure point is ≥0.3% higher (for longs) or lower (for shorts) than current stop
-- Structure point = Swing low/high (3-candle pattern)
-- Trail distance: 0.5% from structure point (allows for minor retracements)
-
-#### Implementation Details:
-
 ```
-For LONG positions > 2R:
+For LONG positions:
 - Identify swing low within last 10 candles (3-candle pattern)
 - New stop = Swing low - 0.5%
 - Only update if new stop ≥ current stop + 0.3%
 - Use: mcp__binance__set_trailing_stop(symbol, triggerPrice, closePercentage: 100)
 
-For SHORT positions > 2R:
+For SHORT positions:
 - Identify swing high within last 10 candles (3-candle pattern)
 - New stop = Swing high + 0.5%
 - Only update if new stop ≤ current stop - 0.3%
 ```
 
-### Market Structure Exits
+### Market Structure Exit Triggers
 
-- Break of trend structure → Exit all
-- Loss of momentum at target (3 consecutive candles with decreasing range) → Exit all
-- New opposing setup forming → Exit all
+1. **Trend Structure Break**: Close beyond opposing structure (>0.15% beyond)
+2. **Momentum Loss**: 3 consecutive candles with decreasing range at target
+3. **Opposing Setup**: New valid setup forming in opposite direction
+4. **Time Stop**: No progress toward target within 20 candles
 
 ## Risk Management Formula
 
@@ -372,7 +362,7 @@ Example: ($250 × 10%) / (0.5% × $97,000) × $97,000 = 0.00515 BTC
 - **Bullish OB**: Last bearish candle before bullish impulse (3+ consecutive candles same direction, total move >0.7%)
 - **Bearish OB**: Last bullish candle before bearish impulse
 - **Valid**: Only if untested (price hasn't returned to 70% of OB body)
-- **Entry**: At 70% of order block candle body
+- **Entry**: At 70.0% of order block candle body
 
 ### Fair Value Gaps
 
@@ -385,8 +375,8 @@ Example: ($250 × 10%) / (0.5% × $97,000) × $97,000 = 0.00515 BTC
 
 - **Bullish**: Series of HH and HL (minimum 2 of each)
 - **Bearish**: Series of LH and LL (minimum 2 of each)
-- **Structure Break**: Close beyond previous swing high/low (minimum 0.15% beyond)
-- **Swing**: 3-candle pattern (high/low with lower highs/lows on each side)
+- **Structure Break**: Close beyond previous swing high/low (≥0.15% beyond)
+- **Swing Point**: 3-candle pattern (middle candle is highest/lowest of the three)
 
 ### Kill Zones (Higher Probability Windows)
 
@@ -400,13 +390,13 @@ Example: ($250 × 10%) / (0.5% × $97,000) × $97,000 = 0.00515 BTC
 - **Round Numbers**: 000/500 levels (e.g., 120,000, 120,500)
 - **50% Retracement**: Middle of move >2.0%
 - **Trendline**: Dynamic support/resistance from 3+ touches within 0.1% of line
-- **Divergence**: Price/momentum divergence on RSI or volume
+- **Divergence**: 3+ candles of price/RSI moving in opposite directions
 
 ## S/R Level Identification
 
 ### Major S/R (Use for Setup A)
 
-- Exactly 2 or more touches (wicks or bodies) within 0.15% range on 4H chart
+- Minimum 2 touches (wicks or bodies) within 0.15% range on 4H chart
 - Touch = Price reaches within 0.15% of level and reverses ≥0.3%
 - Reaction Zone = Price reversal ≥0.7% from level within 5 candles
 - Round numbers (psychological levels)
@@ -414,7 +404,7 @@ Example: ($250 × 10%) / (0.5% × $97,000) × $97,000 = 0.00515 BTC
 
 ### Minor S/R (Use for targets)
 
-- 2+ touches on 1H chart
+- Minimum 2 touches on 1H chart
 - Previous day high/low
 - Weekly pivots
 
@@ -428,20 +418,20 @@ Example: ($250 × 10%) / (0.5% × $97,000) × $97,000 = 0.00515 BTC
 
 ### Touch of S/R Level (IMMEDIATE ENTRY)
 
-- Price reaches S/R level (within 0.1%)
+- Price reaches within 0.1% of S/R level
 - **Entry: IMMEDIATELY on touch**
 - No additional waiting required
 
 ### Rejection Wick Forming (IMMEDIATE ENTRY)
 
-- Shadow starting to form > body size
-- **Entry: IMMEDIATELY when wick appears**
+- Wick length exceeds body length on current candle
+- **Entry: IMMEDIATELY when wick > body**
 - Don't wait for candle close
 
 ### Momentum Bar Starting (IMMEDIATE ENTRY)
 
-- Body > 50% of current range
-- Shows directional intent
+- Body > 50.0% of current candle range
+- Direction aligns with trade bias
 - **Entry: IMMEDIATELY when momentum visible**
 
 ### First Candle After Touch (IMMEDIATE ENTRY)
@@ -450,12 +440,6 @@ Example: ($250 × 10%) / (0.5% × $97,000) × $97,000 = 0.00515 BTC
 - **Entry: IMMEDIATELY on new candle**
 - Maximum aggression on timing
 
-## Mental Framework
-
-- "S/R + ICT + Any movement = IMMEDIATE Entry"
-- "Liquidity sweeps = Act NOW"
-- "Touch of level = Good enough"
-- "Execute when all objective criteria are met"
 
 ## Performance Targets
 
@@ -464,4 +448,4 @@ Example: ($250 × 10%) / (0.5% × $97,000) × $97,000 = 0.00515 BTC
 - Max Drawdown: <10%
 - Daily Trades: 0-5 (more opportunities with aggressive entries)
 
-Remember: Any sign of confirmation at S/R with ICT confluence = IMMEDIATE ACTION. Speed is key.
+Remember: Execute when all three criteria are met: S/R level + ICT confluence + Confirmation.

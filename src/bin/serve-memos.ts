@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * A simple self-contained TypeScript server that serves memo data from ${rootWorkspace}/src/mcpServers/memo.sqlite
+ * A simple self-contained TypeScript server that serves memo data
  * It renders all memos as a modern responsive web ui.
  */
 

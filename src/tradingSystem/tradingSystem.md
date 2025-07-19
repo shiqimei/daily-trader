@@ -100,7 +100,7 @@ CHECK BEFORE ANY TRADE:
 
 ### On User Message: `now:{timestamp}`
 
-1. **Account Status** 
+1. **Account Status**
 
    ```
    mcp__binance__get_account → Check balance, positions
@@ -108,12 +108,13 @@ CHECK BEFORE ANY TRADE:
    mcp__memo__list_memos → Review recent trades
    ```
 
-2. **Market Context** 
+2. **Market Context**
+
    ```
    Trend: Identify on 4H (trending/ranging)
    ```
 
-3. **Market Analysis** 
+3. **Market Analysis**
 
    ```
    4H: Trend direction + major S/R
@@ -122,7 +123,7 @@ CHECK BEFORE ANY TRADE:
    5M: Entry timing only
    ```
 
-4. **Trade Decision** 
+4. **Trade Decision**
 
    ```
    Context: [TRENDING/RANGING]
@@ -134,13 +135,13 @@ CHECK BEFORE ANY TRADE:
 
 5. **Position Management**
 
-   1) **Entry & Risk Management**
-   Entry → Set SL immediately → mcp__binance__set_stop_loss
+   1. **Entry & Risk Management**
+      Entry → Set SL immediately → mcp**binance**set_stop_loss
 
-   2) **Progressive Position Adjustment**
-   1R → Move SL to BE → mcp__binance__set_stop_loss
-   2R → Close 50% + Trail at structure → mcp__binance__set_take_profit (50%) + mcp__binance__set_stop_loss (trail)
-   3R+ → Trail remaining at structure breaks → mcp__binance__set_stop_loss (trail)
+   2. **Progressive Position Adjustment**
+      1R → Move SL to BE → mcp**binance**set_stop_loss
+      2R → Close 50% + Trail at structure → mcp**binance**set_take_profit (50%) + mcp**binance**set_stop_loss (trail)
+      3R+ → Trail remaining at structure breaks → mcp**binance**set_stop_loss (trail)
 
 6. **Update Memo**
    ```
@@ -311,12 +312,14 @@ FULLY_CLOSED → Position exited, logged
 ## Enhanced Exit Management
 
 ### Trailing Stop Rules (After 2R)
+
 - Update only when new structure point is ≥ 0.3% better than current stop
 - Structure point = Swing low/high (3-candle pattern)
 - Maximum stop distance: 1% from current price
 - Time Exit: Close at BE if no movement 2hrs
 
 ### Market Structure Exits
+
 - Break of trend structure → Exit all
 - Loss of momentum at target → Exit all
 - New opposing setup forming → Exit all
@@ -332,35 +335,41 @@ Example: ($250 × 10%) / (0.5% × $97,000) × $97,000 = 0.00515 BTC
 ## ICT Concepts (Primary Tools)
 
 ### Liquidity Pools (STRONGEST SIGNAL)
+
 - **SSL**: Sellside liquidity - equal lows where stops rest
 - **BSL**: Buyside liquidity - equal highs where stops rest
 - **Entry**: After sweep occurs
 - **Priority**: Liquidity sweeps are the strongest ICT signal
 
 ### Order Blocks
+
 - **Bullish OB**: Last bearish candle before bullish impulse (3+ consecutive candles same direction, total move > 0.7%)
 - **Bearish OB**: Last bullish candle before bearish impulse
 - **Valid**: Only if untested (price hasn't returned to 70% of OB body)
 - **Entry**: At 70% of order block candle body
 
 ### Fair Value Gaps
+
 - **Bullish FVG**: Gap up between candle 1 high and candle 3 low (gap size ≥ 0.1% of price)
 - **Bearish FVG**: Gap down between candle 1 low and candle 3 high
 - **Valid**: Only if unfilled and within last 15 candles
 - **Entry**: Within FVG with other confluence
 
 ### Market Structure
+
 - **Bullish**: Series of HH and HL
 - **Bearish**: Series of LH and LL
 - **Structure Break**: Close beyond previous swing high/low (minimum 0.15% beyond)
 - **Swing**: 3-candle pattern (high/low with lower highs/lows on each side)
 
 ### Kill Zones (Higher Probability Windows)
+
 - **London**: 07:00-10:00 UTC (higher volume)
 - **NY**: 12:00-15:00 UTC (higher volume)
 - **Note**: Valid setups can occur 24/7 in crypto
 
 ### Additional ICT Factors
+
 - **Previous Day H/L**: Yesterday's high/low acts as S/R
 - **Round Numbers**: 000/500 levels (e.g., 120,000, 120,500)
 - **50% Retracement**: Middle of recent significant move (>2%)
@@ -370,6 +379,7 @@ Example: ($250 × 10%) / (0.5% × $97,000) × $97,000 = 0.00515 BTC
 ## S/R Level Identification
 
 ### Major S/R (Use for Setup A)
+
 - Exactly 2 or more touches (wicks or bodies) within 0.15% range on 4H chart
 - Touch = Price reaches within 0.15% of level and reverses minimum 0.3%
 - Reaction Zone = Price reversal of minimum 0.7% from level within 5 candles
@@ -377,6 +387,7 @@ Example: ($250 × 10%) / (0.5% × $97,000) × $97,000 = 0.00515 BTC
 - Broken resistance that becomes support (first retest)
 
 ### Minor S/R (Use for targets)
+
 - 2+ touches on 1H chart
 - Previous day high/low
 - Weekly pivots
@@ -384,26 +395,31 @@ Example: ($250 × 10%) / (0.5% × $97,000) × $97,000 = 0.00515 BTC
 ## Confirmation Definitions (MORE AGGRESSIVE)
 
 ### Liquidity Sweep Present (IMMEDIATE ENTRY)
+
 - Price sweeps SSL/BSL beyond level
 - **Entry: IMMEDIATELY when sweep is identified**
 - No need to wait for reclaim
 
 ### Touch of S/R Level (IMMEDIATE ENTRY)
+
 - Price reaches S/R level (within 0.1%)
 - **Entry: IMMEDIATELY on touch**
 - No additional waiting required
 
 ### Rejection Wick Forming (IMMEDIATE ENTRY)
+
 - Shadow starting to form > body size
 - **Entry: IMMEDIATELY when wick appears**
 - Don't wait for candle close
 
 ### Momentum Bar Starting (IMMEDIATE ENTRY)
+
 - Body > 50% of current range
 - Shows directional intent
 - **Entry: IMMEDIATELY when momentum visible**
 
 ### First Candle After Touch (IMMEDIATE ENTRY)
+
 - First candle opening after S/R touch
 - **Entry: IMMEDIATELY on new candle**
 - Maximum aggression on timing

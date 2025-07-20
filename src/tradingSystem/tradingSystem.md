@@ -35,16 +35,19 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     - Imbalances: [FVG @price range]
     - Confirmation: [Type of smart money confirmation]
 4. Trading Setups
-    - Trade with trend direction only (Long/Short)
+    ☐ Trade with trend direction only (Long/Short)
     ☐ Setup A: Liquidity Sweep (SSL/BSL)
     ☐ Setup B: Fair Value Gap (FVG) present
-    - Confirmation: Rejection wick formed at Support/Resistance (minimum 2 touches on 4H chart) after pullback
+    ☐ Confirmation: Rejection wick formed at Support/Resistance (minimum 2 touches on 4H chart) after pullback
     ☐ Open position when: (Setup A OR Setup B) AND Confirmation AND Trend alignment
 5. Position Management
     ☐ Entry → Set SL beyond structure/liquidity
     ☐ 1R → Close 50% position + Move stop loss to breakeven
-    ☐ 2R → Close additional 50% + Trail stop at order blocks or market structure breaks
-    ☐ Exit immediately if profit retracement exceeds 50% from previous high
+    ☐ 2R → Close another 30% (total 80% closed) + Trail stop at order blocks or market structure breaks
+    ☐ Retracement Exit:
+      • Position > 50%: Exit if retracement exceeds 70% from high
+      • Position 20-50%: Exit if retracement exceeds 60% from high
+      • Position < 20%: Exit if retracement exceeds 50% from high
 6. Memo Management
     ☐ Add trading memo → mcp__memo__add_memo
 ```

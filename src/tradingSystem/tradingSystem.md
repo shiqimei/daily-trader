@@ -83,6 +83,7 @@ Positions:
 Price: [current_price] ([24hr_change_%])
 24hr Range: [low] - [high] | Volume: [volume]
 Action: [LONG/SHORT @ price / HOLDING / WAIT]
+Watch: [target price we're going to react]
 ICT Analysis:
 - Liquidity: [SSL/BSL levels and sweeps]
   • SSL: [price] - [status: swept/pending]

@@ -218,17 +218,6 @@ const binanceTools: Tool[] = [
     }
   },
   {
-    name: 'get_open_interest',
-    description: 'Get comprehensive trading metrics including open interest, whale long/short ratios, trader sentiment, and basis across timeframes',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        symbol: { type: 'string', description: 'Trading pair symbol' }
-      },
-      required: ['symbol']
-    }
-  },
-  {
     name: 'get_mark_price',
     description: 'Get mark price and funding rate',
     inputSchema: {
@@ -830,109 +819,6 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                     fundingTime: new Date(h.fundingTime).toISOString(),
                     fundingRate: h.fundingRate
                   }))
-                },
-                null,
-                2
-              )
-            }
-          ]
-        }
-      }
-
-      case 'get_open_interest': {
-        const { symbol } = args as { symbol: string }
-        
-        // Get multiple data points in parallel
-        const [
-          openInterest, 
-          topTraders5m, topTraders15m, topTraders30m,
-          globalRatio5m, globalRatio15m, globalRatio30m,
-          ticker, markPrice, 
-          klines5m, klines15m, klines30m
-        ] = await Promise.all([
-          // Open Interest
-          makeRequest(config, '/fapi/v1/openInterest', { symbol }),
-          // Top trader long/short ratio for different timeframes
-          makeRequest(config, '/futures/data/topLongShortAccountRatio', { symbol, period: '5m', limit: 1 }),
-          makeRequest(config, '/futures/data/topLongShortAccountRatio', { symbol, period: '15m', limit: 1 }),
-          makeRequest(config, '/futures/data/topLongShortAccountRatio', { symbol, period: '30m', limit: 1 }),
-          // Global long/short ratio for different timeframes
-          makeRequest(config, '/futures/data/globalLongShortAccountRatio', { symbol, period: '5m', limit: 1 }),
-          makeRequest(config, '/futures/data/globalLongShortAccountRatio', { symbol, period: '15m', limit: 1 }),
-          makeRequest(config, '/futures/data/globalLongShortAccountRatio', { symbol, period: '30m', limit: 1 }),
-          // Current price from 24hr ticker
-          makeRequest(config, '/fapi/v1/ticker/24hr', { symbol }),
-          // Mark price for basis calculation
-          makeRequest(config, '/fapi/v1/premiumIndex', { symbol }),
-          // Klines for basis calculation
-          makeRequest(config, '/fapi/v1/klines', { symbol, interval: '5m', limit: 1 }),
-          makeRequest(config, '/fapi/v1/klines', { symbol, interval: '15m', limit: 1 }),
-          makeRequest(config, '/fapi/v1/klines', { symbol, interval: '30m', limit: 1 })
-        ])
-        
-        // Calculate basis (spot - futures) for each timeframe
-        const currentPrice = parseFloat(ticker.lastPrice)
-        const basis5m = ((currentPrice - parseFloat(klines5m[0][4])) / parseFloat(klines5m[0][4]) * 100).toFixed(4)
-        const basis15m = ((currentPrice - parseFloat(klines15m[0][4])) / parseFloat(klines15m[0][4]) * 100).toFixed(4)
-        const basis30m = ((currentPrice - parseFloat(klines30m[0][4])) / parseFloat(klines30m[0][4]) * 100).toFixed(4)
-        
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                {
-                  symbol: openInterest.symbol,
-                  openInterest: openInterest.openInterest,
-                  openInterestUSDT: (parseFloat(openInterest.openInterest) * currentPrice).toFixed(2),
-                  time: new Date(openInterest.time).toISOString(),
-                  
-                  // Whale Long/Short Ratio
-                  whaleRatio: {
-                    '5m': topTraders5m[0] ? {
-                      longShortRatio: topTraders5m[0].longShortRatio,
-                      longAccount: (parseFloat(topTraders5m[0].longAccount) * 100).toFixed(2) + '%',
-                      shortAccount: (parseFloat(topTraders5m[0].shortAccount) * 100).toFixed(2) + '%'
-                    } : null,
-                    '15m': topTraders15m[0] ? {
-                      longShortRatio: topTraders15m[0].longShortRatio,
-                      longAccount: (parseFloat(topTraders15m[0].longAccount) * 100).toFixed(2) + '%',
-                      shortAccount: (parseFloat(topTraders15m[0].shortAccount) * 100).toFixed(2) + '%'
-                    } : null,
-                    '30m': topTraders30m[0] ? {
-                      longShortRatio: topTraders30m[0].longShortRatio,
-                      longAccount: (parseFloat(topTraders30m[0].longAccount) * 100).toFixed(2) + '%',
-                      shortAccount: (parseFloat(topTraders30m[0].shortAccount) * 100).toFixed(2) + '%'
-                    } : null
-                  },
-                  
-                  // Global Long/Short Ratio (Trader Sentiment)
-                  traderSentiment: {
-                    '5m': globalRatio5m[0] ? {
-                      longShortRatio: globalRatio5m[0].longShortRatio,
-                      longAccount: (parseFloat(globalRatio5m[0].longAccount) * 100).toFixed(2) + '%',
-                      shortAccount: (parseFloat(globalRatio5m[0].shortAccount) * 100).toFixed(2) + '%'
-                    } : null,
-                    '15m': globalRatio15m[0] ? {
-                      longShortRatio: globalRatio15m[0].longShortRatio,
-                      longAccount: (parseFloat(globalRatio15m[0].longAccount) * 100).toFixed(2) + '%',
-                      shortAccount: (parseFloat(globalRatio15m[0].shortAccount) * 100).toFixed(2) + '%'
-                    } : null,
-                    '30m': globalRatio30m[0] ? {
-                      longShortRatio: globalRatio30m[0].longShortRatio,
-                      longAccount: (parseFloat(globalRatio30m[0].longAccount) * 100).toFixed(2) + '%',
-                      shortAccount: (parseFloat(globalRatio30m[0].shortAccount) * 100).toFixed(2) + '%'
-                    } : null
-                  },
-                  
-                  // Basis (Spot - Futures)
-                  basis: {
-                    '5m': basis5m + '%',
-                    '15m': basis15m + '%',
-                    '30m': basis30m + '%',
-                    currentPrice: currentPrice,
-                    markPrice: markPrice.markPrice
-                  }
                 },
                 null,
                 2

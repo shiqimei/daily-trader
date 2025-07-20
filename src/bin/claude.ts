@@ -43,7 +43,6 @@ async function runClaude() {
         'mcp__binance__get_ticker_24hr',
         'mcp__binance__get_funding_rate',
         'mcp__binance__get_funding_history',
-        'mcp__binance__get_open_interest',
         'mcp__binance__get_mark_price',
         'mcp__binance__get_exchange_info',
         'mcp__binance__get_account',

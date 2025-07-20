@@ -69,9 +69,9 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 # Memo Content Format
 
 ```yml
-Balance: [total] [available]
+BAL: [total] [available]
 Decisions: [market/ICT analysis, key insights, decisions made]
-Positions:
+POS:
 [For each active position]
 - [SYMBOL] [LONG/SHORT] [size] @ [entry_price] [last_price]
   - P/L: [amount] ([R-multiple])

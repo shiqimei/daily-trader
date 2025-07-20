@@ -54,7 +54,7 @@ function formatMemoContent(content: string): string {
     .replace(/\n/g, '<br>')
     .replace(/===/g, '<hr>')
     .replace(
-      /(^|<br>)(Account|Positions|Open Orders|Action|Setup|Risk|Active|Watch|ToolCalls|Decisions):/g,
+      /(^|<br>)(KEY INSIGHT|DECISION|RATIONALE|RISK|BAL|RSK|POS|ACTIVE|ANALYSIS|BTC|ETH|S\/R|SETUP|TOOLS|Account|Positions|Open Orders|Action|Watch|ToolCalls|Decisions):/g,
       '$1<strong>$2:</strong>'
     )
 }
@@ -274,6 +274,7 @@ function renderHTML(memos: Memo[]): string {
     }
 
     .memo-content {
+      white-space: normal!important;
       padding: 1.5rem;
       line-height: 1.6;
       font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -392,7 +393,7 @@ function renderHTML(memos: Memo[]): string {
         .join('\n')
         .replace(/\n/g, '<br>')
         .replace(/===/g, '<hr>')
-        .replace(/(^|<br>)(Account|Positions|Open Orders|Action|Setup|Risk|Active|Watch|ToolCalls|Decisions):/g, '$1<strong>$2:</strong>');
+        .replace(/(^|<br>)(KEY INSIGHT|DECISION|RATIONALE|RISK|BAL|RSK|POS|ACTIVE|ANALYSIS|BTC|ETH|S\/R|SETUP|TOOLS|Account|Positions|Open Orders|Action|Watch|ToolCalls|Decisions):/g, '$1<strong>$2:</strong>');
     }
 
     function filterAndSort() {

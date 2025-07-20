@@ -849,8 +849,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                   },
                   klinesInfo: {
                     interval: '4h',
-                    limit: 20,
-                    description: 'Last 20 four-hour candles for each symbol'
+                    limit: 10,
+                    description: 'Last 10 four-hour candles for each symbol'
                   },
                   timestamp: new Date().toISOString()
                 },

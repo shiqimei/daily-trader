@@ -802,7 +802,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               const klines = await makeRequest(config, '/fapi/v1/klines', {
                 symbol: pair.symbol,
                 interval: '4h',
-                limit: 20
+                limit: 10
               })
 
               // Format klines data: [open_time, open, high, low, close, volume, close_time, quote_volume, count, taker_buy_volume, taker_buy_quote_volume, ignore]

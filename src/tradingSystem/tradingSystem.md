@@ -35,12 +35,14 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     - Liquidity Pools: [SSL @price / BSL @price]
     - Order Blocks: [Bullish OB @price / Bearish OB @price]
     - Imbalances: [FVG @price range]
-    - Confirmation: [Type of smart money confirmation]
 4. Trading Setups
     ☐ Trade with trend direction only (Long/Short)
     ☐ Setup A: Liquidity Sweep (SSL/BSL)
     ☐ Setup B: Fair Value Gap (FVG) present
-    ☐ Confirmation: Rejection wick formed at Support/Resistance (2+ touches on 15m) after pullback
+    ☐ Confirmation = ANY of:
+      - Higher low on 5m after sweep
+      - Break of previous 15m high
+      - Reclaim of broken support level
     ☐ Open position when: (Setup A OR Setup B) AND Confirmation AND Trend alignment
 5. Position Management
     ☐ Entry → Set SL beyond structure/liquidity

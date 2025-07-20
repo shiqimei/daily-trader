@@ -56,7 +56,10 @@ CONFIRMATION (Need ONE - MORE AGGRESSIVE):
 ```
 CHECK BEFORE ANY TRADE:
 └─ Trend: Clear trend → Trade with trend only
-         Range → Trade both directions at extremes
+         Range → Trade ONLY at range extremes:
+                  - Long only at range low (bottom 20% of range)
+                  - Short only at range high (top 20% of range)
+                  - Skip mid-range setups (middle 60%)
 ```
 
 ## Decision Tree
@@ -172,7 +175,11 @@ Top Symbols: [list of top 5 symbols by volume]
 Price: [price]
 Action: [LONG/SHORT @ price / WAIT]
 S/R: [YES/NO] @ [level] - [support/resistance]
-ICT: [Liquidity swept/Order block/Round/Day HL/Retest/FVG/Kill zone/50%/Trendline/Divergence/NONE]
+ICT: [Be specific with levels]
+- Liquidity swept: "SSL at [exact price] swept"
+- Order block: "Bullish OB at [price range]"
+- Previous day H/L: "Yesterday's low at [exact price]"
+- 24hr H/L: "24hr low at [exact price]"
 Confirm: [Liquidity Sweep/Touch/Rejection Wick/Momentum Bar/First Candle/WAITING]
 Risk: Entry:[price] SL:[price] TP:[price] $[risk] ([%])
 Active: [position status with P/L]

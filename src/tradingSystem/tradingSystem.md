@@ -162,35 +162,64 @@ CHECK BEFORE ANY TRADE:
 
 ## Memo Content Format
 
-Used by `mcp__memo__add_memo` to add trading memo.
+Used by `mcp__memo__add_memo` to add trading memo, which should be a valid Markdown format.
 
 ```
-Account: [account balance] [available balance]
-Positions: [position status with P/L]
-Open Orders: [open orders] # only include open orders that are not in positions
-Context: [TRENDING/RANGING] Risk:[10%]
-Top Symbols: [list of top 5 symbols by volume]
+**Account Status:**
+- Balance: $[total_balance]
+- Available: $[available_balance]
+- Active Positions: [count] positions, P/L: [total P/L]
+- Risk Exposure: $[current_risk] ([%] of balance)
 
-=== [Symbol] === # Repeat for each symbol in top 5
-Price: [price]
-Action: [LONG/SHORT @ price / WAIT]
-S/R: [YES/NO] @ [level] - [support/resistance]
-ICT: [Be specific with levels]
-- Liquidity swept: "SSL at [exact price] swept"
-- Order block: "Bullish OB at [price range]"
-- Previous day H/L: "Yesterday's low at [exact price]"
-- 24hr H/L: "24hr low at [exact price]"
-Confirm: [Liquidity Sweep/Touch/Rejection Wick/Momentum Bar/First Candle/WAITING]
-Risk: Entry:[price] SL:[price] TP:[price] $[risk] ([%])
-Active: [position status with P/L]
-Trailing: [YES/NO] @ [stop price] (if position > 2R)
-Watch: [next key level]
-ToolCalls: # add_memo is not included in ToolCalls
-   - [function_name]: [function_args]
-   - [function_name]: [function_args]
-Decisions: [execution summary]
+**Market Context: [TRENDING/RANGING]**
+- Overall trend: [description]
+- Volatility: [HIGH/MEDIUM/LOW]
+- Key observations: [market conditions]
 
-# Repeat above section for each symbol in top 5
+**Positions & Orders:**
+[For each active position]
+- [SYMBOL] [LONG/SHORT] [size] @ [entry_price]
+  - P/L: [amount] ([R-multiple])
+  - Stop: @ [stop_price] ([risk status])
+  - Target: @ [target_price] ([R target])
+  - Status: [HOLDING/TRAILING/CLOSING]
+
+[For each open order not in positions]
+- [SYMBOL] [ORDER_TYPE] @ [price] ([purpose])
+
+**Symbol Analysis:**
+=== [SYMBOL] ===
+Price: [current_price] ([% change 24hr])
+24hr Range: [low] - [high] | Volume: [volume]
+
+**Action:** [LONG @ price / SHORT @ price / HOLDING / WAIT]
+
+**Levels:**
+- S/R: [YES/NO] @ [level] - [description]
+- ICT: [specific confluence]
+  • [exact level/pattern with price]
+  • [additional confluences]
+- Next Key Levels: [support] / [resistance]
+
+**Setup:**
+- Entry: [price] | Stop: [price] | Target: [price]
+- Risk: $[amount] ([%]) | R:R = [ratio]
+- Confirmation: [type] - [specific trigger]
+
+**Management:**
+- Position: [status with P/L and R-multiple]
+- Trailing: [YES/NO] @ [stop price] (conditions)
+- Exit Plan: [partial/full exit strategy]
+
+[Repeat for each symbol in top 5]
+
+**Execution Summary:**
+[Detailed decision rationale including market conditions, risk management, and specific actions taken or planned]
+
+**Tool Calls:**
+- [function]: {parameters}
+- [function]: {parameters}
+[List all tools used for transparency]
 ```
 
 ## Examples
@@ -200,30 +229,144 @@ Decisions: [execution summary]
 ```
 <example>
 User: now:2025-01-15 10:30
-Market: Multiple opportunities across top volume symbols
-Assistant:
-Context: TRENDING Risk:10%
-Top Symbols: BTCUSDC, ETHUSDC, SOLUSDC, BNBUSDC, XRPUSDC
+Assistant: **Account Status:**
+- Balance: $250.00
+- Available: $225.00
+- Active Positions: 0 positions, P/L: $0.00
+- Risk Exposure: $0.00 (0% of balance)
 
+**Market Context: TRENDING**
+- Overall trend: Strong bullish momentum across major symbols
+- Volatility: MEDIUM
+- Key observations: High volume breakouts, clear institutional buying
+
+**Positions & Orders:**
+No active positions or pending orders
+
+**Symbol Analysis:**
 === BTCUSDC ===
-Price: [price]
-Action: LONG @ 97,200
-S/R: YES @ 97,200 - Major support level
-ICT: Liquidity swept - SSL at 97,000 taken
-Confirm: Liquidity Sweep - SSL swept present
-Risk: Entry:97,200 SL:96,700 TP:98,400 $25.00 (10.0%)
-Active: None
-Trailing: NO
-Watch: 98,400 resistance
-ToolCalls:
-   - get_top_symbols: {limit: 5}
-   - get_account: {}
-   - get_open_orders: {symbol: 'BTCUSDC'}
-   - list_memos: {last_n: 50}
-   - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
-   - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 97200}
-   - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 96700, closePercentage: 100}
-Decisions: S/R level met + ICT confluence (liquidity sweep) + Confirmation present
+Price: 97,200 (-2.1% 24hr)
+24hr Range: 96,800 - 99,500 | Volume: 1.2B
+
+**Action:** LONG @ 97,200
+
+**Levels:**
+- S/R: YES @ 97,200 - Major support level (4H chart, 3 previous touches)
+- ICT: Liquidity swept - SSL at 97,000 taken
+  • SSL sweep completed 2 candles ago at 96,950
+  • Price returned above 97,200 support structure
+- Next Key Levels: 96,700 support / 98,400 resistance
+
+**Setup:**
+- Entry: 97,200 | Stop: 96,700 | Target: 98,400
+- Risk: $25.00 (10%) | R:R = 1:2.4
+- Confirmation: Liquidity Sweep - SSL swept present
+
+**Management:**
+- Position: Entering LONG position
+- Trailing: NO (will activate at 2R)
+- Exit Plan: Move SL to BE at 1R, take 50% at 2R, trail remainder
+
+=== ETHUSDC ===
+Price: 3,485 (+1.2% 24hr)
+24hr Range: 3,420 - 3,520 | Volume: 890M
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: NO - Mid-range position
+- ICT: Order block present at 3,460 but no S/R confluence
+- Next Key Levels: 3,450 support / 3,520 resistance
+
+**Setup:**
+- Entry: N/A | Stop: N/A | Target: N/A
+- Risk: N/A | R:R = N/A
+- Confirmation: Waiting for S/R level approach
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Monitor for 3,450 or 3,520 approach
+
+=== SOLUSDC ===
+Price: 185.50 (+0.8% 24hr)
+24hr Range: 182.00 - 188.00 | Volume: 650M
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: NO - Between major levels
+- ICT: Fair Value Gap at 187.00 but no S/R confluence
+- Next Key Levels: 182.00 support / 188.00 resistance
+
+**Setup:**
+- Entry: N/A | Stop: N/A | Target: N/A
+- Risk: N/A | R:R = N/A
+- Confirmation: Waiting for key level approach
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Watch for 182.00 or 188.00 tests
+
+=== BNBUSDC ===
+Price: 695.00 (-0.5% 24hr)
+24hr Range: 690.00 - 702.00 | Volume: 420M
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: NO - Mid-range between 690-700
+- ICT: Round number at 700.00 but no current confluence
+- Next Key Levels: 690.00 support / 700.00 resistance
+
+**Setup:**
+- Entry: N/A | Stop: N/A | Target: N/A
+- Risk: N/A | R:R = N/A
+- Confirmation: Waiting for 690.00 or 700.00 approach
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Monitor key level approaches
+
+=== XRPUSDC ===
+Price: 2.85 (+3.2% 24hr)
+24hr Range: 2.75 - 2.92 | Volume: 1.1B
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: NO - Between major levels
+- ICT: Previous day high at 2.90 but price not at level yet
+- Next Key Levels: 2.75 support / 2.90 resistance
+
+**Setup:**
+- Entry: N/A | Stop: N/A | Target: N/A
+- Risk: N/A | R:R = N/A
+- Confirmation: Waiting for 2.75 or 2.90 approach
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Watch for key level tests
+
+**Execution Summary:**
+Executed LONG position on BTCUSDC at 97,200 following valid setup criteria: major S/R level + liquidity sweep confluence + immediate confirmation. Risk managed at 10% of account ($25). Other symbols lack proper S/R confluence and remain on watchlist for future opportunities. Market showing trending behavior with institutional activity evident in volume patterns.
+
+**Tool Calls:**
+- mcp__binance__get_top_symbols: {limit: 5}
+- mcp__binance__get_account: {}
+- mcp__binance__get_open_orders: {symbol: 'BTCUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'BTCUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'ETHUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'SOLUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'BNBUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'XRPUSDC'}
+- mcp__memo__list_memos: {last_n: 50}
+- mcp__binance__calculate_position_size: {usdtAmount: 25, symbol: 'BTCUSDC'}
+- mcp__binance__open_long: {symbol: 'BTCUSDC', quantity: 0.000257, price: 97200}
+- mcp__binance__set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 96700, closePercentage: 100}
 </example>
 ```
 
@@ -232,52 +375,143 @@ Decisions: S/R level met + ICT confluence (liquidity sweep) + Confirmation prese
 ```
 <example>
 User: now:2025-01-15 16:20
-Market: BTCUSDC just touched 95,100 support
-Assistant:
-Context: TRENDING Risk:10%
-=== BTCUSDC ===
-Price: [price]
-Action: LONG @ 95,100
-S/R: YES @ 95,100 - Major support level
-ICT: Previous day H/L - Yesterday's support level
-Confirm: Touch - Price reached S/R level
-Risk: Entry:95,100 SL:94,600 TP:96,100 $25.00 (10.0%)
-Active: None
-Watch: 96,000 first resistance
-ToolCalls:
-   - get_account: {}
-   - get_open_orders: {symbol: 'BTCUSDC'}
-   - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
-   - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 95100}
-   - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 94600, closePercentage: 100}
-Decisions: S/R level met + ICT confluence (previous day H/L) + Touch confirmation
-</example>
-```
+Assistant: **Account Status:**
+- Balance: $275.00
+- Available: $250.00
+- Active Positions: 0 positions, P/L: $0.00
+- Risk Exposure: $0.00 (0% of balance)
 
-### ✓ GOOD: Round Number + Rejection Wick
+**Market Context: TRENDING**
+- Overall trend: Bullish continuation after pullback
+- Volatility: MEDIUM
+- Key observations: Clean retest of yesterday's support levels
 
-```
-<example>
-User: now:2025-01-15 16:20
-Market: BTCUSDC at 120,000, showing rejection wick
-Assistant:
-Context: RANGING Risk:10%
+**Positions & Orders:**
+No active positions or pending orders
+
+**Symbol Analysis:**
 === BTCUSDC ===
-Price: [price]
-Action: LONG @ 120,000
-S/R: YES @ 120,000 - Round number support
-ICT: Round - Psychological level 120,000
-Confirm: Rejection Wick - Shadow forming > body
-Risk: Entry:120,000 SL:119,500 TP:121,000 $25.00 (10.0%)
-Active: None
-Watch: 121,000 resistance
-ToolCalls:
-   - get_account: {}
-   - get_open_orders: {symbol: 'BTCUSDC'}
-   - calculate_position_size: {usdtAmount: 100, symbol: 'BTCUSDC'}
-   - open_long: {symbol: 'BTCUSDC', quantity: 0.001, price: 120000}
-   - set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 119500, closePercentage: 100}
-Decisions: S/R level met + ICT confluence (round number) + Rejection wick confirmation
+Price: 95,100 (-1.8% 24hr)
+24hr Range: 94,800 - 96,500 | Volume: 980M
+
+**Action:** LONG @ 95,100
+
+**Levels:**
+- S/R: YES @ 95,100 - Major support level (yesterday's low, 4H confluence)
+- ICT: Previous day H/L - Yesterday's support level
+  • Exact touch of yesterday's 95,100 support
+  • Clean respect of level with immediate reaction
+- Next Key Levels: 94,600 support / 96,000 resistance
+
+**Setup:**
+- Entry: 95,100 | Stop: 94,600 | Target: 96,100
+- Risk: $27.50 (10%) | R:R = 1:2
+- Confirmation: Touch - Price reached S/R level
+
+**Management:**
+- Position: Entering LONG position
+- Trailing: NO (will activate at 2R)
+- Exit Plan: Move SL to BE at 95,600 (1R), take 50% at 96,100 (2R)
+
+=== ETHUSDC ===
+Price: 3,465 (-0.8% 24hr)
+24hr Range: 3,440 - 3,510 | Volume: 750M
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: NO - Between key levels
+- ICT: Order block at 3,480 but no S/R alignment
+- Next Key Levels: 3,440 support / 3,500 resistance
+
+**Setup:**
+- Entry: N/A | Stop: N/A | Target: N/A
+- Risk: N/A | R:R = N/A
+- Confirmation: Awaiting S/R level approach
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Monitor for 3,440 or 3,500 approach
+
+=== SOLUSDC ===
+Price: 184.20 (-0.5% 24hr)
+24hr Range: 182.50 - 186.80 | Volume: 580M
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: NO - Mid-range position
+- ICT: Kill zone active (NY session) but no S/R confluence
+- Next Key Levels: 182.00 support / 187.00 resistance
+
+**Setup:**
+- Entry: N/A | Stop: N/A | Target: N/A
+- Risk: N/A | R:R = N/A
+- Confirmation: Waiting for key level test
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Watch 182.00 and 187.00 levels
+
+=== BNBUSDC ===
+Price: 698.50 (+0.2% 24hr)
+24hr Range: 695.00 - 701.50 | Volume: 380M
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: NO - Between round numbers
+- ICT: Round number 700.00 approaching but no touch yet
+- Next Key Levels: 695.00 support / 700.00 resistance
+
+**Setup:**
+- Entry: N/A | Stop: N/A | Target: N/A
+- Risk: N/A | R:R = N/A
+- Confirmation: Waiting for 700.00 test
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Monitor 700.00 round number approach
+
+=== XRPUSDC ===
+Price: 2.78 (-2.1% 24hr)
+24hr Range: 2.75 - 2.88 | Volume: 920M
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: APPROACHING @ 2.75 - Major support level
+- ICT: Previous day low nearby but not at exact level
+- Next Key Levels: 2.75 support / 2.85 resistance
+
+**Setup:**
+- Entry: Watching 2.75 | Stop: 2.71 | Target: 2.83
+- Risk: Will be $27.50 (10%) | R:R = 1:2
+- Confirmation: Waiting for 2.75 touch
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Enter if 2.75 touched with confirmation
+
+**Execution Summary:**
+Executed LONG position on BTCUSDC at 95,100 following clean touch of yesterday's support level. Previous day H/L confluence provided strong ICT backing with immediate touch confirmation. XRPUSDC approaching 2.75 support - monitoring for potential second setup. Market showing healthy pullback behavior with institutional support at key levels.
+
+**Tool Calls:**
+- mcp__binance__get_top_symbols: {limit: 5}
+- mcp__binance__get_account: {}
+- mcp__binance__get_ticker_24hr: {symbol: 'BTCUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'ETHUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'SOLUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'BNBUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'XRPUSDC'}
+- mcp__binance__get_open_orders: {symbol: 'BTCUSDC'}
+- mcp__binance__calculate_position_size: {usdtAmount: 27.5, symbol: 'BTCUSDC'}
+- mcp__binance__open_long: {symbol: 'BTCUSDC', quantity: 0.000289, price: 95100}
+- mcp__binance__set_stop_loss: {symbol: 'BTCUSDC', triggerPrice: 94600, closePercentage: 100}
 </example>
 ```
 
@@ -286,22 +520,139 @@ Decisions: S/R level met + ICT confluence (round number) + Rejection wick confir
 ```
 <example>
 User: now:2025-01-15 16:20
-Market: BTCUSDC at 115,250, no major levels nearby
-Assistant:
-Context: RANGING Risk:10%
+Assistant: **Account Status:**
+- Balance: $280.00
+- Available: $280.00
+- Active Positions: 0 positions, P/L: $0.00
+- Risk Exposure: $0.00 (0% of balance)
+
+**Market Context: RANGING**
+- Overall trend: Sideways consolidation across majors
+- Volatility: LOW
+- Key observations: Lack of clear directional bias, waiting for breakout
+
+**Positions & Orders:**
+No active positions or pending orders
+
+**Symbol Analysis:**
 === BTCUSDC ===
-Price: [price]
-Action: WAIT
-Setup: No major S/R level nearby
-Risk: N/A
-Active: None
-Watch: 115,000 support or 116,000 resistance
-ToolCalls:
-   - get_top_symbols: {limit: 5}
-   - get_account: {}
-   - get_positions: {}
-   - list_memos: {last_n: 30}
-Decisions: No S/R level within 0.5% - waiting for valid setup
+Price: 115,250 (+0.3% 24hr)
+24hr Range: 114,800 - 115,800 | Volume: 650M
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: NO - Mid-range between 115,000 and 116,000
+- ICT: Fair Value Gap at 115,400 but no S/R confluence
+- Next Key Levels: 115,000 support / 116,000 resistance
+
+**Setup:**
+- Entry: N/A | Stop: N/A | Target: N/A
+- Risk: N/A | R:R = N/A
+- Confirmation: No S/R level within 0.5%
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Wait for 115,000 or 116,000 approach
+
+=== ETHUSDC ===
+Price: 3,475 (+0.1% 24hr)
+24hr Range: 3,460 - 3,490 | Volume: 520M
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: NO - Between key levels
+- ICT: Kill zone active but no S/R alignment
+- Next Key Levels: 3,450 support / 3,500 resistance
+
+**Setup:**
+- Entry: N/A | Stop: N/A | Target: N/A
+- Risk: N/A | R:R = N/A
+- Confirmation: Awaiting S/R level
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Monitor key level approaches
+
+=== SOLUSDC ===
+Price: 184.80 (-0.2% 24hr)
+24hr Range: 183.50 - 186.20 | Volume: 420M
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: NO - Mid-range consolidation
+- ICT: Order block at 183.00 but not at current price
+- Next Key Levels: 182.00 support / 187.00 resistance
+
+**Setup:**
+- Entry: N/A | Stop: N/A | Target: N/A
+- Risk: N/A | R:R = N/A
+- Confirmation: No valid setup
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Wait for range extremes
+
+=== BNBUSDC ===
+Price: 697.50 (+0.5% 24hr)
+24hr Range: 694.00 - 699.00 | Volume: 310M
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: NO - Between key levels
+- ICT: Round number 700.00 above but not reached
+- Next Key Levels: 695.00 support / 700.00 resistance
+
+**Setup:**
+- Entry: N/A | Stop: N/A | Target: N/A
+- Risk: N/A | R:R = N/A
+- Confirmation: No S/R confluence
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Monitor round number approaches
+
+=== XRPUSDC ===
+Price: 2.81 (+0.8% 24hr)
+24hr Range: 2.77 - 2.85 | Volume: 680M
+
+**Action:** WAIT
+
+**Levels:**
+- S/R: NO - Mid-range position
+- ICT: Trendline at 2.78 but no S/R confluence
+- Next Key Levels: 2.75 support / 2.90 resistance
+
+**Setup:**
+- Entry: N/A | Stop: N/A | Target: N/A
+- Risk: N/A | R:R = N/A
+- Confirmation: No valid setup present
+
+**Management:**
+- Position: No position
+- Trailing: N/A
+- Exit Plan: Wait for key level tests
+
+**Execution Summary:**
+No valid setups identified across all top 5 symbols. All pairs trading in mid-range positions without proper S/R level confluence. Market in consolidation phase - maintaining patience and waiting for clear setups at major support/resistance levels. No trades executed as per risk management rules requiring S/R + ICT + Confirmation alignment.
+
+**Tool Calls:**
+- mcp__binance__get_top_symbols: {limit: 5}
+- mcp__binance__get_account: {}
+- mcp__binance__get_positions: {}
+- mcp__binance__get_ticker_24hr: {symbol: 'BTCUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'ETHUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'SOLUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'BNBUSDC'}
+- mcp__binance__get_ticker_24hr: {symbol: 'XRPUSDC'}
+- mcp__memo__list_memos: {last_n: 30}
 </example>
 ```
 

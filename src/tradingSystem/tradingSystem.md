@@ -163,67 +163,48 @@ SUPPORT & RESISTANCE LEVELS:
 
 ## Memo Content Format
 
-```markdown
-**Account Status:**
+```
+KEY INSIGHT: [main market observation/pattern identified]
+DECISION: [what action taken and why]
+RATIONALE: [brief logic behind the decision]
+RISK: [key risks identified for current positions/setups]
 
-- Balance: $[total_balance] Available: $[available_balance]
-- Active Positions: [count] positions, P/L: [total P/L]
-- Risk Exposure: $[current_risk] ([%] of balance)
+BAL: $[balance] | RSK: $[risk] ([%]) | POS: [count]
 
-**Positions & Orders:**
-[For each active position]
+ACTIVE:
+[SYM] [L/S] $[size] @[entry] [Xm] PL: $[amt] ([R]) SL:[price] TP:[price] [STATUS]
 
-- [SYMBOL] [LONG/SHORT] [size] @ [entry_price]
-  - Entry Time: [UTC time] | Duration: [Xh Ym] ⏱️
-  - P/L: [amount] ([R-multiple])
-  - Stop: @ [stop_price] (beyond [support/resistance])
-  - Target: @ [target_price] ([next key level])
-  - Status: [HOLDING/TRAILING/CLOSING]
-  - Time Alert: [OK / APPROACHING 1HR / OVER 1HR / APPROACHING 2HR / OVER 2HR]
+ANALYSIS:
+BTC: [price] ([%]) 4H:[↑/↓/→] 1H:[HH/LL] SIG:[type] ACT:[LONG/SHORT/WAIT]
+S/R: [supp] / [resi] | SETUP: [pat] @[ent] SL:[stp] TP:[tgt] R:[ratio]
 
-**Price Action Analysis:**
-Overall Trend: [BULLISH/BEARISH/SIDEWAYS] on [timeframe]
-Key Focus: [Where price is relative to support/resistance]
+ETH: [price] ([%]) 4H:[↑/↓/→] 1H:[HH/LL] SIG:[type] ACT:[LONG/SHORT/WAIT]
+S/R: [supp] / [resi] | SETUP: [pat] @[ent] SL:[stp] TP:[tgt] R:[ratio]
 
-**Symbol Analysis:**
-=== BTCUSDC ===
-Price: [current_price] ([% change 24hr])
-24hr Range: [low] - [high] | Volume: [volume]
+TOOLS: [list]
+```
 
-**4H Trend:** [BULLISH/BEARISH/SIDEWAYS]
-**1H Structure:** [HH/HL/LH/LL pattern]
-**15M Structure:** [Current market structure]
+### Example
 
-**Key Levels:**
+```
+KEY INSIGHT: BTC approaching key resistance at 45000, ETH showing divergence
+DECISION: Entered BTC SHORT at 44950, waiting on ETH confirmation
+RATIONALE: Strong resistance level tested 3x, volume declining on approach
+RISK: Breakout above 45200 invalidates setup, tight SL needed
 
-- Resistance: [price levels]
-- Support: [price levels]
-- Trend Lines: [if any]
+BAL: $10000 | RSK: $500 (5%) | POS: 1
 
-**Action:** [LONG/SHORT @ price / HOLDING / WAIT]
+ACTIVE:
+BTC S $500 @44950 15m PL: $25 (0.5R) SL:45200 TP:44200 OK
 
-**Price Action Signal:**
+ANALYSIS:
+BTC: 44975 (-1.2%) 4H:→ 1H:LH SIG:RES_TOUCH ACT:SHORT
+S/R: 44200 / 45000 | SETUP: resistance @44950 SL:45200 TP:44200 R:1.5
 
-- Pattern: [Breakout/Reversal/Continuation pattern]
-- Entry: [price] | Stop: [price] | Target: [price]
-- Risk: $[amount] ([%]) | R:R = [ratio]
-- Confirmation: [Volume/Close/Momentum type]
+ETH: 3150 (+0.8%) 4H:↑ 1H:HH SIG:DIVERGENCE ACT:WAIT
+S/R: 3100 / 3200 | SETUP: divergence @3160 SL:3180 TP:3080 R:2.0
 
-**Management (50-30-20 Fast TP):**
-
-- Position: [status with P/L and R-multiple]
-- Entry Time: [UTC] | Duration: [Xh Ym] ⏱️
-- TP1 (50%): @ [price] (0.75R) - [PENDING/FILLED]
-- TP2 (30%): @ [price] (1.5R) - [PENDING/FILLED]
-- TP3 (20%): @ [price] (2R+/next level) - [TRAILING/FILLED]
-- Time Status: [OK (<30min) / WARNING (30min-1hr) / CRITICAL (>1hr)]
-- Action Required: [None / Consider 50% reduction / Must close 80%]
-
-=== ETHUSDC ===
-[Same format as BTCUSDC]
-
-**Tool Calls:**
-[List all tools used]
+TOOLS: get_klines(symbol: BTCUSDC, interval: 5m, limit: 20), get_klines(symbol: ETHUSDC, interval: 5m, limit: 20)
 ```
 
 ## Price Action Concepts
@@ -329,7 +310,7 @@ Time-Based Exits:
 1. **Trend is Your Friend**: Trade with the overall trend direction
 2. **Levels Matter**: Price respects significant support/resistance
 3. **Volume Helps**: Any volume increase supports the move
-4. **Keep It Simple**: Pure price action beats complex indicators  
+4. **Keep It Simple**: Pure price action beats complex indicators
 5. **Quantity & Quality**: Take more B+ setups, exit faster
 
 Remember: You're trading pure price movement - no indicators, no complex theories, just clean price action signals at key levels.

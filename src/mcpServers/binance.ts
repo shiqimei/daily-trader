@@ -104,7 +104,8 @@ const binanceTools: Tool[] = [
   // Common Utils
   {
     name: 'calculate_position_size',
-    description: 'Calculate position size in base asset from USDT amount, considering current leverage and price',
+    description:
+      'Calculate position size in base asset from USDT amount, considering current leverage and price',
     inputSchema: {
       type: 'object',
       properties: {
@@ -174,7 +175,8 @@ const binanceTools: Tool[] = [
   },
   {
     name: 'get_ticker_24hr',
-    description: 'Get 24hr ticker statistics including last price, high, low, volume, and price change percentage',
+    description:
+      'Get 24hr ticker statistics including last price, high, low, volume, and price change percentage',
     inputSchema: {
       type: 'object',
       properties: {
@@ -185,11 +187,27 @@ const binanceTools: Tool[] = [
   },
   {
     name: 'get_top_symbols',
-    description: 'Get top USDC trading pairs by 24hr volume (descending)',
+    description:
+      'Get top USDC trading pairs optimized for day trading with volatility and volume filters',
     inputSchema: {
       type: 'object',
       properties: {
-        limit: { type: 'number', description: 'Number of top symbols to return', default: 5 }
+        limit: { type: 'number', description: 'Number of top symbols to return', default: 5 },
+        minVolatility: {
+          type: 'number',
+          description: 'Minimum 24hr price change % (absolute)',
+          default: 2
+        },
+        maxVolatility: {
+          type: 'number',
+          description: 'Maximum 24hr price change % (absolute)',
+          default: 15
+        },
+        minRelativeVolume: {
+          type: 'number',
+          description: 'Minimum relative volume ratio vs 7-day average',
+          default: 1.5
+        }
       }
     }
   },
@@ -702,7 +720,6 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
       }
 
-
       case 'get_ticker_24hr': {
         const { symbol } = args as { symbol: string }
         const ticker = await makeRequest(config, '/fapi/v1/ticker/24hr', { symbol })
@@ -733,32 +750,116 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
       }
 
       case 'get_top_symbols': {
-        const { limit = 5 } = args as { limit?: number }
-        
-        // Get all 24hr tickers
+        const {
+          limit = 5,
+          minVolatility = 2,
+          maxVolatility = 15,
+          minRelativeVolume = 1.5
+        } = args as {
+          limit?: number
+          minVolatility?: number
+          maxVolatility?: number
+          minRelativeVolume?: number
+        }
+
+        // Get 24hr tickers first
         const tickers = await makeRequest(config, '/fapi/v1/ticker/24hr')
-        
-        // Filter for USDC pairs and sort by volume (quoteVolume in USDC)
-        const usdcPairs = tickers
-          .filter((ticker: any) => ticker.symbol.endsWith('USDC'))
+
+        // Get USDC pairs for volume analysis
+        const usdcTickers = tickers.filter((ticker: any) => ticker.symbol.endsWith('USDC'))
+
+        // Calculate 7-day average volumes for top symbols (to avoid too many API calls)
+        const avgVolumes = new Map()
+
+        // Get 7-day volume data for top 20 USDC symbols by current volume
+        const topSymbolsForVolumeCheck = usdcTickers
           .sort((a: any, b: any) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
+          .slice(0, 20)
+
+        // Fetch 7-day volume data for each symbol
+        const volumePromises = topSymbolsForVolumeCheck.map(async (ticker: any) => {
+          try {
+            const klines = await makeRequest(config, '/fapi/v1/klines', {
+              symbol: ticker.symbol,
+              interval: '1d',
+              limit: 7
+            })
+
+            // Calculate 7-day average volume (quote volume is index 7)
+            const volumes = klines.map((kline: any[]) => parseFloat(kline[7]))
+            const avgVolume =
+              volumes.reduce((sum: number, vol: number) => sum + vol, 0) / volumes.length
+
+            return { symbol: ticker.symbol, avgVolume }
+          } catch (error) {
+            // If we can't get historical data, use current volume as fallback
+            return { symbol: ticker.symbol, avgVolume: parseFloat(ticker.quoteVolume) }
+          }
+        })
+
+        const volumeResults = await Promise.all(volumePromises)
+        volumeResults.forEach(result => {
+          avgVolumes.set(result.symbol, result.avgVolume)
+        })
+
+        // Filter and score USDC pairs for day trading
+        const dayTradingPairs = tickers
+          .filter((ticker: any) => {
+            if (!ticker.symbol.endsWith('USDC')) return false
+
+            const priceChange = Math.abs(parseFloat(ticker.priceChangePercent))
+            const currentVolume = parseFloat(ticker.quoteVolume)
+            const avgVolume = avgVolumes.get(ticker.symbol) || currentVolume
+            const relativeVolume = currentVolume / avgVolume
+
+            // Day trading filters
+            return (
+              priceChange >= minVolatility && // Minimum volatility for quick moves
+              priceChange <= maxVolatility && // Maximum volatility to avoid extreme risk
+              relativeVolume >= minRelativeVolume && // High relative volume for liquidity
+              currentVolume > 1000000 // Minimum absolute volume threshold (1M USDC)
+            )
+          })
+          .map((ticker: any) => {
+            const priceChange = parseFloat(ticker.priceChangePercent)
+            const currentVolume = parseFloat(ticker.quoteVolume)
+            const avgVolume = avgVolumes.get(ticker.symbol) || currentVolume
+            const relativeVolume = currentVolume / avgVolume
+
+            // Day trading score: weighted combination of volatility and relative volume
+            const volatilityScore = Math.abs(priceChange) / 10 // 0-1.5 typical range
+            const volumeScore = Math.min(relativeVolume / 3, 1) // Cap at 1 for 3x+ volume
+            const dayTradingScore = volatilityScore * 0.6 + volumeScore * 0.4
+
+            return {
+              symbol: ticker.symbol,
+              volume: ticker.volume,
+              quoteVolume: ticker.quoteVolume,
+              priceChangePercent: ticker.priceChangePercent,
+              lastPrice: ticker.lastPrice,
+              relativeVolume: relativeVolume.toFixed(2),
+              avgVolume7d: avgVolume.toFixed(0),
+              dayTradingScore: dayTradingScore.toFixed(3),
+              volatility: Math.abs(priceChange).toFixed(2)
+            }
+          })
+          .sort((a: any, b: any) => parseFloat(b.dayTradingScore) - parseFloat(a.dayTradingScore))
           .slice(0, limit)
-          .map((ticker: any) => ({
-            symbol: ticker.symbol,
-            volume: ticker.volume,
-            quoteVolume: ticker.quoteVolume,
-            priceChangePercent: ticker.priceChangePercent,
-            lastPrice: ticker.lastPrice
-          }))
-        
+
         return {
           content: [
             {
               type: 'text',
               text: JSON.stringify(
                 {
-                  topSymbols: usdcPairs,
-                  count: usdcPairs.length,
+                  topSymbols: dayTradingPairs,
+                  count: dayTradingPairs.length,
+                  filters: {
+                    minVolatility: `${minVolatility}%`,
+                    maxVolatility: `${maxVolatility}%`,
+                    minRelativeVolume: `${minRelativeVolume}x`,
+                    minAbsoluteVolume: '1M USDC'
+                  },
                   timestamp: new Date().toISOString()
                 },
                 null,

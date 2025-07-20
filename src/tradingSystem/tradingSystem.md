@@ -190,6 +190,9 @@ Used by `mcp__memo__add_memo` to add trading memo, which should be a valid Markd
 [For each open order not in positions]
 - [SYMBOL] [ORDER_TYPE] @ [price] ([purpose])
 
+**Execution Summary:**
+[Detailed decision rationale including market conditions, risk management, and specific actions taken or planned]
+
 **Symbol Analysis:**
 === [SYMBOL] ===
 Price: [current_price] ([% change 24hr])
@@ -215,9 +218,6 @@ Price: [current_price] ([% change 24hr])
 - Exit Plan: [partial/full exit strategy]
 
 [Repeat for each symbol in top 5]
-
-**Execution Summary:**
-[Detailed decision rationale including market conditions, risk management, and specific actions taken or planned]
 
 **Tool Calls:**
 - [function]: {parameters}
@@ -245,6 +245,9 @@ Assistant: **Account Status:**
 
 **Positions & Orders:**
 No active positions or pending orders
+
+**Execution Summary:**
+Executed LONG position on BTCUSDC at 97,200 following valid setup criteria: major S/R level + liquidity sweep confluence + immediate confirmation. Risk managed at 10% of account ($25). Other symbols lack proper S/R confluence and remain on watchlist for future opportunities. Market showing trending behavior with institutional activity evident in volume patterns.
 
 **Symbol Analysis:**
 === BTCUSDC ===
@@ -354,9 +357,6 @@ Price: 2.85 (+3.2% 24hr)
 - Trailing: N/A
 - Exit Plan: Watch for key level tests
 
-**Execution Summary:**
-Executed LONG position on BTCUSDC at 97,200 following valid setup criteria: major S/R level + liquidity sweep confluence + immediate confirmation. Risk managed at 10% of account ($25). Other symbols lack proper S/R confluence and remain on watchlist for future opportunities. Market showing trending behavior with institutional activity evident in volume patterns.
-
 **Tool Calls:**
 - mcp__binance__get_top_symbols: {limit: 5}
 - mcp__binance__get_account: {}
@@ -391,6 +391,9 @@ Assistant: **Account Status:**
 
 **Positions & Orders:**
 No active positions or pending orders
+
+**Execution Summary:**
+Executed LONG position on BTCUSDC at 95,100 following clean touch of yesterday's support level. Previous day H/L confluence provided strong ICT backing with immediate touch confirmation. XRPUSDC approaching 2.75 support - monitoring for potential second setup. Market showing healthy pullback behavior with institutional support at key levels.
 
 **Symbol Analysis:**
 === BTCUSDC ===
@@ -500,9 +503,6 @@ Price: 2.78 (-2.1% 24hr)
 - Trailing: N/A
 - Exit Plan: Enter if 2.75 touched with confirmation
 
-**Execution Summary:**
-Executed LONG position on BTCUSDC at 95,100 following clean touch of yesterday's support level. Previous day H/L confluence provided strong ICT backing with immediate touch confirmation. XRPUSDC approaching 2.75 support - monitoring for potential second setup. Market showing healthy pullback behavior with institutional support at key levels.
-
 **Tool Calls:**
 - mcp__binance__get_top_symbols: {limit: 5}
 - mcp__binance__get_account: {}
@@ -536,6 +536,9 @@ Assistant: **Account Status:**
 
 **Positions & Orders:**
 No active positions or pending orders
+
+**Execution Summary:**
+No valid setups identified across all top 5 symbols. All pairs trading in mid-range positions without proper S/R level confluence. Market in consolidation phase - maintaining patience and waiting for clear setups at major support/resistance levels. No trades executed as per risk management rules requiring S/R + ICT + Confirmation alignment.
 
 **Symbol Analysis:**
 === BTCUSDC ===
@@ -642,9 +645,6 @@ Price: 2.81 (+0.8% 24hr)
 - Position: No position
 - Trailing: N/A
 - Exit Plan: Wait for key level tests
-
-**Execution Summary:**
-No valid setups identified across all top 5 symbols. All pairs trading in mid-range positions without proper S/R level confluence. Market in consolidation phase - maintaining patience and waiting for clear setups at major support/resistance levels. No trades executed as per risk management rules requiring S/R + ICT + Confirmation alignment.
 
 **Tool Calls:**
 - mcp__binance__get_top_symbols: {limit: 5}

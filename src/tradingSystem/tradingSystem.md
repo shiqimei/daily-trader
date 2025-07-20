@@ -40,7 +40,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ Trade with trend direction only (Long/Short)
     ☐ Setup A: Liquidity Sweep (SSL/BSL)
     ☐ Setup B: Fair Value Gap (FVG) present
-    ☐ Confirmation: Rejection wick formed at Support/Resistance (minimum 2 touches on 4H chart) after pullback
+    ☐ Confirmation: Rejection wick formed at Support/Resistance (2+ touches on 15m) after pullback
     ☐ Open position when: (Setup A OR Setup B) AND Confirmation AND Trend alignment
 5. Position Management
     ☐ Entry → Set SL beyond structure/liquidity

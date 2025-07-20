@@ -74,7 +74,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 
 ```yml
 BAL: [total] [available]
-Decisions: [market/ICT analysis, key insights, decisions made]
+Decisions: [Key market observation + setup identified/waiting + action taken]
 POS:
 [For each active position]
 - [SYMBOL] [LONG/SHORT] [size] @ [entry_price] [last_price]

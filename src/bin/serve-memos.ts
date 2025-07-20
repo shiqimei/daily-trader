@@ -64,7 +64,7 @@ function formatDateTime(dateStr: string): string {
     // The dateStr is in format "YYYY-MM-DD HH:MM:SS" and represents UTC time
     // Convert to UTC+8 timezone
     const utcDate = new Date(dateStr + 'Z')
-    const utc8Date = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000)
+    const utc8Date = new Date(utcDate.getTime())
     return utc8Date.toLocaleString('en-US', { timeZone: 'UTC' })
   } catch {
     return dateStr
@@ -377,8 +377,7 @@ function renderHTML(memos: Memo[]): string {
         // The dateStr is in format "YYYY-MM-DD HH:MM:SS" and represents UTC time
         // Convert to UTC+8 timezone
         const utcDate = new Date(dateStr + 'Z');
-        const utc8Date = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000));
-        return utc8Date.toLocaleString('en-US', { timeZone: 'UTC' });
+        return utcDate.toLocaleString('en-US', { timeZone: 'UTC' });
       } catch {
         return dateStr;
       }

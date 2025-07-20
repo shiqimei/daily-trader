@@ -192,7 +192,7 @@ const binanceTools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        limit: { type: 'number', description: 'Number of top symbols to return', default: 5 },
+        limit: { type: 'number', description: 'Number of top symbols to return', default: 10 },
         minVolatility: {
           type: 'number',
           description: 'Minimum 24hr price change % (absolute)',
@@ -202,7 +202,7 @@ const binanceTools: Tool[] = [
           type: 'number',
           description: 'Maximum 24hr price change % (absolute)',
           default: 15
-        },
+        }
       }
     }
   },
@@ -746,7 +746,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
       case 'get_top_symbols': {
         const {
-          limit = 5,
+          limit = 10,
           minVolatility = 2,
           maxVolatility = 15
         } = args as {
@@ -758,52 +758,13 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         // Get 24hr tickers first
         const tickers = await makeRequest(config, '/fapi/v1/ticker/24hr')
 
-        // Get USDC pairs for volume analysis
-        const usdcTickers = tickers.filter((ticker: any) => ticker.symbol.endsWith('USDC'))
-
-        // Calculate 7-day average volumes for top symbols (to avoid too many API calls)
-        const avgVolumes = new Map()
-
-        // Get 7-day volume data for top 20 USDC symbols by current volume
-        const topSymbolsForVolumeCheck = usdcTickers
-          .sort((a: any, b: any) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
-          .slice(0, 20)
-
-        // Fetch 7-day volume data for each symbol
-        const volumePromises = topSymbolsForVolumeCheck.map(async (ticker: any) => {
-          try {
-            const klines = await makeRequest(config, '/fapi/v1/klines', {
-              symbol: ticker.symbol,
-              interval: '1d',
-              limit: 7
-            })
-
-            // Calculate 7-day average volume (quote volume is index 7)
-            const volumes = klines.map((kline: any[]) => parseFloat(kline[7]))
-            const avgVolume =
-              volumes.reduce((sum: number, vol: number) => sum + vol, 0) / volumes.length
-
-            return { symbol: ticker.symbol, avgVolume }
-          } catch (error) {
-            // If we can't get historical data, use current volume as fallback
-            return { symbol: ticker.symbol, avgVolume: parseFloat(ticker.quoteVolume) }
-          }
-        })
-
-        const volumeResults = await Promise.all(volumePromises)
-        volumeResults.forEach(result => {
-          avgVolumes.set(result.symbol, result.avgVolume)
-        })
-
-        // Filter and score USDC pairs for day trading
-        const dayTradingPairs = tickers
+        // Filter USDC pairs and apply day trading filters
+        const filteredPairs = tickers
           .filter((ticker: any) => {
             if (!ticker.symbol.endsWith('USDC')) return false
 
             const priceChange = Math.abs(parseFloat(ticker.priceChangePercent))
             const currentVolume = parseFloat(ticker.quoteVolume)
-            const avgVolume = avgVolumes.get(ticker.symbol) || currentVolume
-            const relativeVolume = currentVolume / avgVolume
 
             // Day trading filters
             return (
@@ -814,14 +775,12 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           })
           .map((ticker: any) => {
             const priceChange = parseFloat(ticker.priceChangePercent)
-            const currentVolume = parseFloat(ticker.quoteVolume)
-            const avgVolume = avgVolumes.get(ticker.symbol) || currentVolume
-            const relativeVolume = currentVolume / avgVolume
+            const volatility = Math.abs(priceChange)
 
-            // Day trading score: weighted combination of volatility and relative volume
-            const volatilityScore = Math.abs(priceChange) / 10 // 0-1.5 typical range
-            const volumeScore = Math.min(relativeVolume / 3, 1) // Cap at 1 for 3x+ volume
-            const dayTradingScore = volatilityScore * 0.6 + volumeScore * 0.4
+            // Day trading score based on volatility and volume
+            const volatilityScore = volatility / 10 // 0-1.5 typical range
+            const volumeScore = Math.min(parseFloat(ticker.quoteVolume) / 10000000, 1) // Normalize by 10M
+            const dayTradingScore = volatilityScore * 0.7 + volumeScore * 0.3
 
             return {
               symbol: ticker.symbol,
@@ -829,14 +788,51 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               quoteVolume: ticker.quoteVolume,
               priceChangePercent: ticker.priceChangePercent,
               lastPrice: ticker.lastPrice,
-              relativeVolume: relativeVolume.toFixed(2),
-              avgVolume7d: avgVolume.toFixed(0),
-              dayTradingScore: dayTradingScore.toFixed(3),
-              volatility: Math.abs(priceChange).toFixed(2)
+              volatility: volatility.toFixed(2),
+              dayTradingScore: dayTradingScore.toFixed(3)
             }
           })
           .sort((a: any, b: any) => parseFloat(b.dayTradingScore) - parseFloat(a.dayTradingScore))
           .slice(0, limit)
+
+        // Get 4-hour klines for each selected symbol
+        const symbolsWithKlines = await Promise.all(
+          filteredPairs.map(async (pair: any) => {
+            try {
+              const klines = await makeRequest(config, '/fapi/v1/klines', {
+                symbol: pair.symbol,
+                interval: '4h',
+                limit: 20
+              })
+
+              // Format klines data: [open_time, open, high, low, close, volume, close_time, quote_volume, count, taker_buy_volume, taker_buy_quote_volume, ignore]
+              const formattedKlines = klines.map((kline: any[]) => ({
+                openTime: parseInt(kline[0]),
+                open: parseFloat(kline[1]),
+                high: parseFloat(kline[2]),
+                low: parseFloat(kline[3]),
+                close: parseFloat(kline[4]),
+                volume: parseFloat(kline[5]),
+                closeTime: parseInt(kline[6]),
+                quoteVolume: parseFloat(kline[7]),
+                trades: parseInt(kline[8]),
+                takerBuyVolume: parseFloat(kline[9]),
+                takerBuyQuoteVolume: parseFloat(kline[10])
+              }))
+
+              return {
+                ...pair,
+                klines4h: formattedKlines
+              }
+            } catch (error) {
+              console.error(`Failed to fetch klines for ${pair.symbol}:`, error)
+              return {
+                ...pair,
+                klines4h: []
+              }
+            }
+          })
+        )
 
         return {
           content: [
@@ -844,12 +840,17 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               type: 'text',
               text: JSON.stringify(
                 {
-                  topSymbols: dayTradingPairs,
-                  count: dayTradingPairs.length,
+                  topSymbols: symbolsWithKlines,
+                  count: symbolsWithKlines.length,
                   filters: {
                     minVolatility: `${minVolatility}%`,
                     maxVolatility: `${maxVolatility}%`,
                     minAbsoluteVolume: '1M USDC'
+                  },
+                  klinesInfo: {
+                    interval: '4h',
+                    limit: 20,
+                    description: 'Last 20 four-hour candles for each symbol'
                   },
                   timestamp: new Date().toISOString()
                 },

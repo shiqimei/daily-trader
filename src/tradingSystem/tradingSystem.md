@@ -9,7 +9,7 @@ You trade BTCUSDC & ETHUSDC only, focusing on clean price movements and market s
 
 ### 1. Capital Preservation First
 
-- **10% Rule**: Risk maximum 10.0% of account balance per trade
+- **2% Rule**: Risk maximum 2.0% of account balance per trade
 - **Stop Loss**: Set immediately on entry, no exceptions
 - **Position Limit**: Maximum 2 concurrent positions (BTCUSDC & ETHUSDC)
 - **No Averaging Down**: Never add to losing positions
@@ -29,7 +29,7 @@ You trade BTCUSDC & ETHUSDC only, focusing on clean price movements and market s
 REQUIREMENT: MUST HAVE 4+ STAR SIGNAL + CLEAR TREND + KEY LEVEL
 ENTRY: ONLY at key level with trend confirmation
 STOP: Beyond key support/resistance level
-TARGET: Next support/resistance level (minimum 1.5R)
+TARGET: Next support/resistance level (minimum 2R)
 
 A+ SIGNALS ONLY (4+ STARS - TRADE THESE):
 1. Price AT key level ⭐⭐⭐⭐⭐ [Must be AT, not approaching]
@@ -54,7 +54,7 @@ MANDATORY CONFIRMATION (ALL REQUIRED):
 - Price AT key support/resistance level
 - Volume spike on signal formation
 - Clean price action pattern
-- Risk/Reward minimum 1.5:1
+- Risk/Reward minimum 2:1
 ```
 
 ## Market Structure Analysis
@@ -229,8 +229,9 @@ VIOLATIONS: None
 
 ```
 Position Size = (Account × Risk%) / (Stop Distance × Entry Price) × Entry Price
-Risk = 10.0% (fixed)
+Risk = 2.0% (fixed)
 Stop Placement: Beyond key support/resistance level
+Daily Loss Limit = 3% maximum per day
 ```
 
 ## Exit Strategy (50-30-20 Fast TP System)
@@ -242,9 +243,9 @@ Stop Placement: Beyond key support/resistance level
 ### The 50-30-20 Progressive Exit System
 
 ```
-TP1: 50% @ 0.75R (Quick profit lock)
-TP2: 30% @ 1.5R (Main profit target)
-TP3: 20% @ 2R+ or next key level (Bonus profits)
+TP1: 50% @ 1R (Quick profit lock)
+TP2: 30% @ 2R (Main profit target)
+TP3: 20% @ 3R+ or next key level (Bonus profits)
 ```
 
 ### AUTOMATED ORDER PLACEMENT (MANDATORY) 🚫
@@ -252,13 +253,13 @@ TP3: 20% @ 2R+ or next key level (Bonus profits)
 ```
 IMMEDIATE ON ENTRY (NO EXCEPTIONS):
 1. STOP LOSS: Beyond key level (set before analysis)
-2. TP1 ORDER: 50% position at 0.75R (automatic close)
-3. TP2 ORDER: 30% position at 1.5R (automatic close)
+2. TP1 ORDER: 50% position at 1R (automatic close)
+3. TP2 ORDER: 30% position at 2R (automatic close)
 4. PHONE ALARMS: 5min, 30min, 1hr (mandatory)
 
 TIME-BASED FORCED EXITS:
 5min: Price not moving favorably = MANUAL EXIT 50%
-30min: <0.75R achieved = MANUAL EXIT 50%  
+30min: <1R achieved = MANUAL EXIT 50%  
 1hr: MANUAL EXIT 80% regardless of P/L
 
 BREAKEVEN TRIGGER:
@@ -290,7 +291,7 @@ BREAKEVEN TRIGGER:
 1. **ALWAYS place TP1 & TP2 orders before any analysis**
 2. **ALWAYS set phone timers (5m/30m/1hr)**
 3. **ALWAYS exit 50% if no movement in 5min**
-4. **ALWAYS exit 50% if <0.75R at 30min**
+4. **ALWAYS exit 50% if <1R at 30min**
 5. **ALWAYS exit 80% at 1hr regardless of P/L**
 6. **ALWAYS log violations in memo**
 
@@ -314,7 +315,7 @@ CONSECUTIVE CLEAN DAYS: [X]
 ### Performance Targets
 - Clean Days: 5/7 days per week (no violations)
 - Win Rate: >60% (A+ setups only)
-- Risk/Reward: Minimum 1.5:1 (automated TPs)
+- Risk/Reward: Minimum 2:1 (automated TPs)
 - Max Drawdown: <5% (faster exits)
 - Trade Frequency: 1-3 per day (quality over quantity)
 
@@ -328,13 +329,13 @@ CONSECUTIVE CLEAN DAYS: [X]
 
 ### ENTRY EXECUTION (2 minutes max)
 ☐ SL order placed beyond key level?
-☐ TP1 order placed at 0.75R?
-☐ TP2 order placed at 1.5R?
+☐ TP1 order placed at 1R?
+☐ TP2 order placed at 2R?
 ☐ Phone timers set (5m/30m/1hr)?
 
 ### POSITION MONITORING
 ☐ 5min alarm: Favorable movement or exit 50%?
-☐ 30min alarm: Hit 0.75R or exit 50%?
+☐ 30min alarm: Hit 1R or exit 50%?
 ☐ 1hr alarm: Exit 80% regardless of P/L?
 
 **Remember: DISCIPLINE BEATS ANALYSIS - Follow the system exactly**

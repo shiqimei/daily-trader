@@ -26,8 +26,10 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ mcp__binance__get_open_orders → Check open orders
     ☐ mcp__binance__cancel_order → Clean up duplicate or orphaned orders if any exist
     ☐ mcp__memo__list_memos → Review recent trades
-2. GET klines
-    ☐ mcp__binance__get_klines → Retrieve 5m, 15m, 4H, 1D timeframes for BTCUSDC & ETHUSDC
+2. GET klines & featuring candlesticks
+    ☐ mcp__binance__get_klines → Retrieve 5m, 15m, 4h, 1d timeframes for BTCUSDC & ETHUSDC
+    ☐ [for klines in each timeframe 5m,15m,4h,1d] output:
+      Date,Open,High,Low,Close,Volume,Kline Type,Key Features
 3. ICT Analysis
     - Market Structure: [BULLISH/BEARISH] - [BOS/CHoCH status]
     - Liquidity Pools: [SSL @price / BSL @price]
@@ -96,4 +98,24 @@ ICT Analysis:
   • Recent: [BOS/CHoCH] at [price]
 - Additional: [Breaker/Mitigation/OTE levels]
 Tool Calls: [Comma-separated list of all MCP tools utilized]
+Klines:
+  [for klines in each timeframe 5m,15m,4h,1d] output:
+  Date,Open,High,Low,Close,Volume,Candle Type,Key Features
+  ...
+```
+
+# Kline Featuring Example
+
+```yml
+Date,Open,High,Low,Close,Volume,Candle Type,Key Features
+YYYY-MM-DD HH:mm:ss,150.00,152.50,149.80,152.00,25M,Bullish,Strong close near high
+YYYY-MM-DD HH:mm:ss,152.10,153.20,151.50,152.80,22M,Bullish,Higher high, higher low
+YYYY-MM-DD HH:mm:ss,152.90,154.00,152.00,153.50,28M,Bullish,Breakout with volume
+YYYY-MM-DD HH:mm:ss,153.40,153.80,152.20,152.50,18M,Bearish Doji,Indecision at resistance
+YYYY-MM-DD HH:mm:ss,152.60,153.00,151.00,151.50,30M,Bearish,High volume selling
+YYYY-MM-DD HH:mm:ss,151.40,152.00,150.50,151.80,20M,Bullish,Hammer,Bounce from support
+YYYY-MM-DD HH:mm:ss,151.90,154.50,151.80,154.20,35M,Bullish,Engulfing,Strong reversal signal
+YYYY-MM-DD HH:mm:ss,154.30,155.00,153.90,154.80,32M,Bullish,Continuation
+YYYY-MM-DD HH:mm:ss,154.70,155.20,153.50,153.80,25M,Bearish,Rejection at $155
+YYYY-MM-DD HH:mm:ss,153.90,154.10,152.00,152.50,28M,Bearish,Lower high formed
 ```

@@ -152,13 +152,20 @@ MARKET STRUCTURE:
    Decision: [EXECUTE/WAIT]
    ```
 
-6. **Position Management**
+6. **Position Management (50-30-20 Fast TP System)**
 
    ```
    Entry → Set SL beyond structure/liquidity
-   1R → Move SL to BE
-   2R → Close 50% + Trail at order blocks
-   3R+ → Trail at market structure breaks
+   0.5R → Move SL to breakeven (protect capital)
+   0.75R → Close 50% (TP1 - extreme speed profit lock)
+   1.5R → Close 30% (TP2 - main profit target)
+   2R+ → Trail remaining 20% at order blocks/structure breaks
+   
+   Time Limits:
+   - 15min: Price must move favorably or consider exit
+   - 1hr: If <0.75R achieved, reduce position by 50%
+   - 2hr: Close 80% regardless of P/L, keep max 20%
+   - Kill Zone End: Close all positions 30min before session end
    ```
 
 7. **Update Memo**
@@ -186,10 +193,12 @@ MARKET STRUCTURE:
 [For each active position]
 
 - [SYMBOL] [LONG/SHORT] [size] @ [entry_price]
+  - Entry Time: [UTC time] | Duration: [Xh Ym] ⏱️
   - P/L: [amount] ([R-multiple])
   - Stop: @ [stop_price] (beyond [structure/liquidity])
   - Target: @ [target_price] ([liquidity pool/imbalance])
   - Status: [HOLDING/TRAILING/CLOSING]
+  - Time Alert: [OK / APPROACHING 1HR / OVER 1HR / APPROACHING 2HR / OVER 2HR]
 
 **ICT Market Analysis:**
 Overall Structure: [BULLISH/BEARISH with recent BOS/CHoCH]
@@ -223,11 +232,15 @@ Price: [current_price] ([% change 24hr])
 - Risk: $[amount] ([%]) | R:R = [ratio]
 - Confirmation: [Displacement/Liquidity Grab/SMT/Structure Break]
 
-**Management:**
+**Management (50-30-20 Fast TP):**
 
 - Position: [status with P/L and R-multiple]
-- Trailing: [YES/NO] @ [stop price] (at OB/structure)
-- Exit Plan: [targeting liquidity/imbalance]
+- Entry Time: [UTC] | Duration: [Xh Ym] ⏱️
+- TP1 (50%): @ [price] (0.75R) - [PENDING/FILLED]
+- TP2 (30%): @ [price] (1.5R) - [PENDING/FILLED]
+- TP3 (20%): @ [price] (2R+/liquidity) - [TRAILING/FILLED]
+- Time Status: [OK (<1hr) / WARNING (1-2hr) / CRITICAL (>2hr) / KILL ZONE ENDING]
+- Action Required: [None / Consider 50% reduction / Must close 80% / Exit all now]
 
 [Repeat for each symbol]
 
@@ -285,21 +298,48 @@ Risk = 10.0% (fixed)
 Stop Placement: Beyond market structure or liquidity pool
 ```
 
-## ICT Exit Strategy
+## ICT Exit Strategy (50-30-20 Fast TP System)
 
-### Liquidity-Based Exits (Primary)
+### Quick Profit Lock Model - "Better to secure than to hope"
 
-1. **Primary Target**: Next untapped liquidity pool (SSL/BSL)
-2. **Secondary Target**: Previous day/week/month high/low
-3. **Extended Target**: Major imbalances on higher timeframe
-4. **Ultimate Target**: Quarterly or monthly liquidity levels
+**Core Philosophy**: In day trading, speed of profit realization beats size of theoretical gains. Most intraday moves are 1-2R, and waiting for 3R+ often results in giving back profits.
 
-### Progressive Position Management
+### The 50-30-20 Progressive Exit System
 
-1. **At 1R**: Move stop to breakeven (protect capital)
-2. **At 2R**: Close 50% at liquidity level + activate ICT trailing
-3. **After 2R**: Trail using order blocks or breaker blocks
-4. **At 3R+**: Trail at each market structure break (BOS)
+```
+TP1: 50% @ 0.75R (Extreme speed profit lock)
+TP2: 30% @ 1.5R (Main profit target)  
+TP3: 20% @ 2R+ or liquidity target (Bonus profits)
+```
+
+### Why This System Works
+
+1. **Psychological Edge**: At 0.75R with 50% closed, even full retracement to stop = only -0.5R loss
+2. **Intraday Reality**: 80% of day trades peak between 1-2R
+3. **Capital Efficiency**: Faster turnover allows more high-quality setups per day
+4. **Risk Reduction**: Average loss becomes 0.5-0.7R instead of full 1R
+
+### Progressive Position Management Timeline
+
+```
+Entry → Set SL beyond structure/liquidity
+0-15min → Price must move favorably or consider exit
+0.5R → Move SL to breakeven immediately
+0.75R → AUTO-CLOSE 50% (TP1) - no hesitation
+1.5R → AUTO-CLOSE 30% (TP2) - lock main profit
+2R+ → Trail remaining 20% at structure/OBs
+
+Time-Based Exits:
+1hr: If <0.75R → Reduce 50% (cut risk)
+2hr: Close 80% minimum regardless of P/L
+Kill Zone -30min: Begin closing all positions
+```
+
+### Liquidity-Based Targets (Adjusted for Fast TP)
+
+1. **TP1 (0.75R)**: Often at first minor resistance/support or 50% of expected move
+2. **TP2 (1.5R)**: Usually reaches first significant liquidity pool (SSL/BSL)
+3. **TP3 (2R+)**: Major liquidity targets or higher timeframe imbalances
 
 ### ICT-Specific Exit Triggers
 
@@ -316,6 +356,17 @@ Stop Placement: Beyond market structure or liquidity pool
 - **Friday Considerations**: Lighter positions into weekend
 - **News Events**: Exit before high-impact releases
 - **Month/Quarter End**: Watch for institutional rebalancing
+
+### Expected Outcomes with Fast TP System
+
+**Traditional Approach** (waiting for 2-3R):
+- 3 trades/day: 1 winner (2.5R), 2 losers (-2R) = +0.5R daily
+
+**Fast TP Approach** (50-30-20 system):
+- 3 trades/day: 2-3 partial winners (0.75-1.5R each) = +2-3R daily
+- Reduced stress, better psychology, more opportunities
+
+**Key Principle**: "In day trading, the bird in hand is worth three in the bush"
 
 ## Critical Rules (NEVER VIOLATE)
 

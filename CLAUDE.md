@@ -31,3 +31,4 @@
    ```
 
 4. Write "Execution Checklist (Use Every Time)"
+5. Write "Risk/Reward: Minimum 2:1" trading system

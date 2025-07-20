@@ -52,7 +52,7 @@ const memoTools: Tool[] = [
       properties: {
         last_n: {
           type: 'number',
-          description: 'Number of recent memos to retrieve (default: 10, max: 30)'
+          description: 'Number of recent memos to retrieve (default: 5, max: 6)'
         }
       }
     }

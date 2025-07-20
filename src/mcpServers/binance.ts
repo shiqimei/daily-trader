@@ -203,11 +203,6 @@ const binanceTools: Tool[] = [
           description: 'Maximum 24hr price change % (absolute)',
           default: 15
         },
-        minRelativeVolume: {
-          type: 'number',
-          description: 'Minimum relative volume ratio vs 7-day average',
-          default: 1
-        }
       }
     }
   },
@@ -753,13 +748,11 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         const {
           limit = 5,
           minVolatility = 2,
-          maxVolatility = 15,
-          minRelativeVolume = 1.5
+          maxVolatility = 15
         } = args as {
           limit?: number
           minVolatility?: number
           maxVolatility?: number
-          minRelativeVolume?: number
         }
 
         // Get 24hr tickers first
@@ -816,7 +809,6 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             return (
               priceChange >= minVolatility && // Minimum volatility for quick moves
               priceChange <= maxVolatility && // Maximum volatility to avoid extreme risk
-              relativeVolume >= minRelativeVolume && // High relative volume for liquidity
               currentVolume > 1000000 // Minimum absolute volume threshold (1M USDC)
             )
           })
@@ -857,7 +849,6 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                   filters: {
                     minVolatility: `${minVolatility}%`,
                     maxVolatility: `${maxVolatility}%`,
-                    minRelativeVolume: `${minRelativeVolume}x`,
                     minAbsoluteVolume: '1M USDC'
                   },
                   timestamp: new Date().toISOString()

@@ -100,7 +100,6 @@ CHECK BEFORE ANY TRADE:
    Parameters: 
    - minVolatility: 2 (minimum 2% 24hr price change)
    - maxVolatility: 5 (maximum 5% to avoid extreme risk)
-   - minRelativeVolume: 2 (minimum 2x average 7-day volume)
    Trading List: Analyze only pairs with day trading characteristics
    ```
 
@@ -665,7 +664,6 @@ No valid setups identified across all top 5 symbols. All pairs trading in mid-ra
 - **Dynamic Universe**: Use `get_top_symbols` to fetch top 5 USDC pairs optimized for day trading
 - **Day Trading Filters**: 
   - 2-5% 24hr volatility for quick moves without extreme risk
-  - ≥2x relative volume vs 7-day average for enhanced liquidity
   - Minimum 1M USDC absolute volume threshold
 - **Day Trading Score**: Ranked by weighted combination of volatility (60%) and relative volume (40%)
 - **Analyze All**: Check each filtered symbol for valid setups

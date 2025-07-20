@@ -162,16 +162,9 @@ SUPPORT & RESISTANCE LEVELS:
 ```markdown
 **Account Status:**
 
-- Balance: $[total_balance]
-- Available: $[available_balance]
+- Balance: $[total_balance] Available: $[available_balance]
 - Active Positions: [count] positions, P/L: [total P/L]
 - Risk Exposure: $[current_risk] ([%] of balance)
-
-**Market Overview:**
-
-- Current UTC: [time]
-- Market Session: [Asian/London/NY/Overlap]
-- Overall Bias: [BULLISH/BEARISH/NEUTRAL]
 
 **Positions & Orders:**
 [For each active position]

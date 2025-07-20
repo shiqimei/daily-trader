@@ -206,7 +206,7 @@ const binanceTools: Tool[] = [
         minRelativeVolume: {
           type: 'number',
           description: 'Minimum relative volume ratio vs 7-day average',
-          default: 1.5
+          default: 1
         }
       }
     }

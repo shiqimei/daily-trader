@@ -262,10 +262,35 @@ const binanceTools: Tool[] = [
   },
   {
     name: 'get_positions',
-    description: 'Get all open positions',
+    description: 'Get all open positions with unrealized and realized PnL',
     inputSchema: {
       type: 'object',
       properties: {}
+    }
+  },
+  {
+    name: 'get_income_history',
+    description: 'Get income history including realized PnL, funding fees, and commissions',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', description: 'Trading pair symbol (optional)' },
+        incomeType: {
+          type: 'string',
+          enum: [
+            'TRANSFER',
+            'WELCOME_BONUS',
+            'REALIZED_PNL',
+            'FUNDING_FEE',
+            'COMMISSION',
+            'INSURANCE_CLEAR'
+          ],
+          description: 'Income type filter (optional)'
+        },
+        startTime: { type: 'number', description: 'Start time in milliseconds (optional)' },
+        endTime: { type: 'number', description: 'End time in milliseconds (optional)' },
+        limit: { type: 'number', description: 'Number of records (max 1000)', default: 100 }
+      }
     }
   },
   {
@@ -1016,26 +1041,186 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           (p: any) => parseFloat(p.positionAmt) !== 0
         )
 
+        // Fetch realized PnL for each active position from income history
+        const positionsWithRealizedPnl = await Promise.all(
+          activePositions.map(async (position: any) => {
+            try {
+              // First, try to find position opening time from order history
+              // Get all orders for this symbol to find the position opening order
+              const allOrders = await makeRequest(
+                config,
+                '/fapi/v1/allOrders',
+                {
+                  symbol: position.symbol,
+                  limit: 500
+                },
+                'GET',
+                true
+              )
+
+              // Sort orders by time descending
+              const sortedOrders = allOrders.sort((a: any, b: any) => b.time - a.time)
+
+              // Find the most recent position-opening order (when position was at 0)
+              let positionStartTime = Date.now() - 30 * 24 * 60 * 60 * 1000 // Default 30 days ago
+
+              // Look for the order that opened the current position
+              for (let i = 0; i < sortedOrders.length; i++) {
+                const order = sortedOrders[i]
+                if (order.status === 'FILLED' && order.type === 'MARKET') {
+                  // This could be our position opening order
+                  // For now, use the most recent filled market order as position start
+                  positionStartTime = order.time
+                  break
+                }
+              }
+
+              // Get all income types for accurate PnL calculation
+              const incomeHistory = await makeRequest(
+                config,
+                '/fapi/v1/income',
+                {
+                  symbol: position.symbol,
+                  startTime: positionStartTime - 30 * 1000,
+                  endTime: Date.now(),
+                  limit: 1000
+                },
+                'GET',
+                true
+              )
+
+              // Calculate realized PnL: sum(realized_pnl) - sum(funding_fee) - sum(commission)
+              let realizedPnlSum = 0
+              let fundingFeeSum = 0
+              let commissionSum = 0
+
+              incomeHistory.forEach((income: any) => {
+                const amount = parseFloat(income.income || '0')
+                switch (income.incomeType) {
+                  case 'REALIZED_PNL':
+                    realizedPnlSum += amount
+                    break
+                  case 'FUNDING_FEE':
+                    fundingFeeSum += amount
+                    break
+                  case 'COMMISSION':
+                    commissionSum += amount
+                    break
+                }
+              })
+
+              // Net realized PnL = realized PnL + funding fees (negative) + commissions (negaitve)
+              const netRealizedPnl = realizedPnlSum + fundingFeeSum + commissionSum
+
+              return {
+                symbol: position.symbol,
+                side: parseFloat(position.positionAmt) > 0 ? 'LONG' : 'SHORT',
+                positionAmt: position.positionAmt,
+                entryPrice: position.entryPrice,
+                markPrice: position.markPrice,
+                unrealizedPnl: position.unrealizedProfit,
+                realizedPnl: realizedPnlSum,
+                netRealizedPnl: netRealizedPnl.toFixed(8),
+                commissionFee: commissionSum,
+                fundingFee: fundingFeeSum,
+                isolatedWallet: position.isolatedWallet,
+                notional: position.notional,
+                leverage: position.leverage,
+                marginType: position.marginType,
+                liquidationPrice: position.liquidationPrice,
+                updateTime: new Date(position.updateTime).toISOString()
+              }
+            } catch (error) {
+              return {
+                symbol: position.symbol,
+                side: parseFloat(position.positionAmt) > 0 ? 'LONG' : 'SHORT',
+                positionAmt: position.positionAmt,
+                entryPrice: position.entryPrice,
+                markPrice: position.markPrice,
+                unrealizedProfit: position.unrealizedProfit,
+                realizedPnl: '0',
+                isolatedWallet: position.isolatedWallet,
+                notional: position.notional,
+                leverage: position.leverage,
+                marginType: position.marginType,
+                liquidationPrice: position.liquidationPrice,
+                updateTime: new Date(position.updateTime).toISOString()
+              }
+            }
+          })
+        )
+
         return {
           content: [
             {
               type: 'text',
               text: JSON.stringify(
                 {
-                  count: activePositions.length,
-                  positions: activePositions.map((p: any) => ({
-                    symbol: p.symbol,
-                    side: parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT',
-                    positionAmt: p.positionAmt,
-                    entryPrice: p.entryPrice,
-                    markPrice: p.markPrice,
-                    unrealizedProfit: p.unrealizedProfit,
-                    isolatedWallet: p.isolatedWallet,
-                    notional: p.notional,
-                    leverage: p.leverage,
-                    marginType: p.marginType,
-                    liquidationPrice: p.liquidationPrice,
-                    updateTime: new Date(p.updateTime).toISOString()
+                  count: positionsWithRealizedPnl.length,
+                  positions: positionsWithRealizedPnl
+                },
+                null,
+                2
+              )
+            }
+          ]
+        }
+      }
+
+      case 'get_income_history': {
+        const {
+          symbol,
+          incomeType,
+          startTime,
+          endTime,
+          limit = 100
+        } = args as {
+          symbol?: string
+          incomeType?: string
+          startTime?: number
+          endTime?: number
+          limit?: number
+        }
+
+        const params: any = { limit }
+        if (symbol) params.symbol = symbol
+        if (incomeType) params.incomeType = incomeType
+        if (startTime) params.startTime = startTime
+        if (endTime) params.endTime = endTime
+
+        // If no time range specified, default to last 7 days
+        if (!startTime && !endTime) {
+          params.endTime = Date.now()
+          params.startTime = params.endTime - 7 * 24 * 60 * 60 * 1000
+        }
+
+        const incomeHistory = await makeRequest(config, '/fapi/v1/income', params, 'GET', true)
+
+        // Sort by time descending (latest first)
+        const sortedHistory = incomeHistory.sort((a: any, b: any) => b.time - a.time)
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  count: sortedHistory.length,
+                  totalIncome: sortedHistory
+                    .reduce(
+                      (total: number, income: any) => total + parseFloat(income.income || '0'),
+                      0
+                    )
+                    .toFixed(8),
+                  incomeHistory: sortedHistory.map((income: any) => ({
+                    symbol: income.symbol,
+                    incomeType: income.incomeType,
+                    income: income.income,
+                    asset: income.asset,
+                    info: income.info,
+                    time: new Date(income.time).toISOString(),
+                    tranId: income.tranId,
+                    tradeId: income.tradeId
                   }))
                 },
                 null,

@@ -75,23 +75,22 @@ BAL: [total] [available]
 Decisions: [Key market observation + entry logic explanation + expected R:R ratio + action taken]
 POS:
 [For each active position]
-- [SYMBOL] [LONG/SHORT] [size] @ [entry_price] [last_price]
-  - P/L: [amount] ([R-multiple])
-  - Stop: @ [stop_price] (based on [price structure reason])
-  - Target: @ [target_price] ([based on resistance/support/pattern])
-  - Action: [HOLD/TRAIL/CLOSE]
+- [SYMBOL] [LONG/SHORT] [size] @ entry_price last_price
+  • P/L: [amount] ([R-multiple])
+  • Stop: @ [stop_price] (based on [price structure reason])
+  • Target: @ [target_price] ([based on resistance/support/pattern])
+    [Review and check checklist item below if completed]
+    ☐ TP1: 1R → Close 50% position + Move SL to BE
+    ☐ TP2: 2R → Close another 30% (total 80% closed)
+    ☐ TP3: Retracement exit or strcuture-based exit
+  • Action: [HOLD/TRAIL/CLOSE]
+
 [For each symbol]
 === [SYMBOL] ===
 Price: [current_price] ([24hr_change_%])
 24hr Range: [low] - [high] | Volume: [volume]
 Action: [LONG/SHORT @ price / HOLDING / WAIT]
 Watch: [key price levels to monitor]
-Market Analysis:
-- Price Action: [Current kline patterns, momentum, volume analysis]
-- Key Levels: [Support and resistance levels from price history]
-- Market Context: [Overall trend, volatility, sentiment]
-- Setup Identified: [If any high-probability setup based on experience]
-- Entry Logic: [Clear explanation of why this is a good entry]
-- Risk/Reward: [Expected R:R ratio with stop loss and target levels]
+
 ToolCalls: [Comma-separated list of all MCP tools utilized]
 ```

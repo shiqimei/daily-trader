@@ -49,7 +49,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
       • Position > 50%: Exit if retracement exceeds 70% from high, mcp__binance__close_position
       • Position 20-50%: Exit if retracement exceeds 60% from high, mcp__binance__close_position
       • Position < 20%: Exit if retracement exceeds 50% from high, mcp__binance__close_position
-    !! Create orders if some are missing to make our SL/TP well executed
+    !! Create orders if some are missing to ensure our SL/TP well executed
 6. Memo Management
     ☐ Add trading memo → mcp__memo__add_memo
 ```

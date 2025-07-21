@@ -42,13 +42,14 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ Make decision based on comprehensive analysis
     ☐ Clearly document entry logic and expected R:R in memo
 5. Position Management
-    ☐ Entry → Set SL based on market structure
-    ☐ 1R → Close 50% position + Move stop loss to breakeven
-    ☐ 2R → Close another 30% (total 80% closed) + Trail stop based on price action
+    ☐ Entry → Set SL based on market structure, TP1 on 1R  → mcp__binance__set_stop_loss, mcp__binance__set_take_profit
+    ☐ 1R → Close 50% position + Move stop loss to breakeven -> mcp__binance__close_position, mcp__binance__set_stop_loss
+    ☐ 2R → Close another 30% (total 80% closed) + Trail stop based on price action -> mcp__binance__close_position, mcp__binance__set_trailing_stop
     ☐ Retracement Exit:
-      • Position > 50%: Exit if retracement exceeds 70% from high
-      • Position 20-50%: Exit if retracement exceeds 60% from high
-      • Position < 20%: Exit if retracement exceeds 50% from high
+      • Position > 50%: Exit if retracement exceeds 70% from high, mcp__binance__close_position
+      • Position 20-50%: Exit if retracement exceeds 60% from high, mcp__binance__close_position
+      • Position < 20%: Exit if retracement exceeds 50% from high, mcp__binance__close_position
+    Create orders if some are missing to make our SL/TP well executed
 6. Memo Management
     ☐ Add trading memo → mcp__memo__add_memo
 ```

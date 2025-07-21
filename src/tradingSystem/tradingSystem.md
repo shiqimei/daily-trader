@@ -76,7 +76,7 @@ Decisions: [Key market observation + entry logic explanation + expected R:R rati
 POS:
 [For each active position]
 - [SYMBOL] [LONG/SHORT] [size] @ entry_price last_price
-  • PNL: [realized] [unrealized]
+  • PNL: [netrealized_pnl] [realized_pnl] [unrealized_pnl]
   • P/L: [amount] ([R-multiple])
   • Stop: @ [stop_price] (based on [price structure reason])
   • Target: @ [target_price] ([based on resistance/support/pattern])

@@ -1,4 +1,4 @@
-import { traderPrompt } from '@/tradingSystem'
+import { systemPrompt } from '@/prompts'
 import { logger } from '@/utils/logger'
 import { query } from '@anthropic-ai/claude-code'
 import dayjs from 'dayjs'
@@ -31,7 +31,7 @@ async function runClaude() {
     abortController: new AbortController(),
     options: {
       maxTurns: 999,
-      customSystemPrompt: traderPrompt,
+      customSystemPrompt: systemPrompt,
       allowedTools: [
         'mcp__binance__get_top_symbols',
         'mcp__binance__calculate_position_size',
@@ -66,7 +66,11 @@ async function runClaude() {
         'mcp__binance__cancel_all_orders',
         'mcp__binance__get_order_history',
         'mcp__memo__add_memo',
-        'mcp__memo__list_memos'
+        'mcp__memo__list_memos',
+        'mcp__trading-system__get_trading_system',
+        'mcp__trading-system__update_trading_system',
+        'mcp__trading-system__revert_trading_system',
+        'mcp__trading-system__get_revision_history'
       ],
       disallowedTools: [
         'Task',
@@ -95,6 +99,11 @@ async function runClaude() {
           type: 'stdio',
           command: 'npx',
           args: ['-y', 'tsx', './src/mcpServers/memo.ts']
+        },
+        tradingSystem: {
+          type: 'stdio',
+          command: 'npx',
+          args: ['-y', 'tsx', './src/mcpServers/tradingSystem.ts']
         }
       },
       executable: 'node',

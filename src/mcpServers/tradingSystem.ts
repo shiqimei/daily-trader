@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 import { db } from '@/database'
+import { initialTradingSystemPrompt } from '@/prompts'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { diffLines } from 'diff'
-import fs from 'fs'
-import path from 'path'
 
 // Create trading system table
 db.prepare(
@@ -23,21 +22,6 @@ db.prepare(
 // Create index for faster queries
 db.prepare('CREATE INDEX IF NOT EXISTS idx_revision ON trading_systems(revision)').run()
 
-// Get initial trading system content from markdown file
-const getInitialTradingSystem = (): string => {
-  try {
-    const tradingSystemPath = path.join(process.cwd(), 'src', 'tradingSystem', 'tradingSystem.md')
-    if (fs.existsSync(tradingSystemPath)) {
-      return fs.readFileSync(tradingSystemPath, 'utf-8')
-    }
-  } catch (error) {
-    // Ignore errors
-  }
-  return `# Trading System
-
-Initial trading system content. Please update with your trading rules and strategies.`
-}
-
 // Check if we need to initialize with the first revision
 const countStmt = db.prepare('SELECT COUNT(*) as count FROM trading_systems')
 const count = countStmt.get() as { count: number }
@@ -47,7 +31,7 @@ if (count.count === 0) {
     INSERT INTO trading_systems (created_time, revision, content, revision_notes)
     VALUES (?, ?, ?, ?)
   `)
-  insertStmt.run(new Date().toISOString(), 1, getInitialTradingSystem(), 'Initial trading system')
+  insertStmt.run(new Date().toISOString(), 1, initialTradingSystemPrompt, 'Initial trading system')
 }
 
 const tools = [
@@ -108,7 +92,7 @@ const tools = [
 
 const server = new Server(
   {
-    name: 'trading-system-server',
+    name: 'trading-system',
     version: '1.0.0'
   },
   {
@@ -300,22 +284,22 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               const oldLines = previous.content.split('\n')
               const newLines = current.content.split('\n')
               const diff = diffLines(previous.content, current.content)
-              
+
               // Create unified diff format
               const diffPatch = []
-              
+
               let oldLineNum = 1
               let newLineNum = 1
               let additions = 0
               let deletions = 0
-              
+
               // Process diff parts to create proper unified diff
               for (const part of diff) {
                 const lines = part.value.split('\n')
                 if (lines[lines.length - 1] === '') {
                   lines.pop() // Remove empty line from split
                 }
-                
+
                 if (part.removed) {
                   deletions += lines.length
                   for (const line of lines) {
@@ -337,7 +321,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                   }
                 }
               }
-              
+
               diffInfo = {
                 type: 'patch',
                 additions,

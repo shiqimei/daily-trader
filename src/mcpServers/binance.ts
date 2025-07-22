@@ -2484,6 +2484,45 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               return timeMatch
             })
 
+            // Calculate entry price and average close price first
+            let entryPrice = 0
+            let totalEntryValue = 0
+            let totalEntryQty = 0
+            let totalCloseValue = 0
+            let totalCloseQty = 0
+
+            for (const order of pos.orders) {
+              const qty = parseFloat(order.executedQty)
+              // We should now have actual trade prices from userTrades endpoint
+              const price = parseFloat(order.avgPrice) || parseFloat(order.price) || 0
+
+              if (pos.direction === 'LONG') {
+                if (order.side === 'BUY') {
+                  // Entry orders for LONG
+                  totalEntryValue += qty * price
+                  totalEntryQty += qty
+                } else {
+                  // Exit orders for LONG
+                  totalCloseValue += qty * price
+                  totalCloseQty += qty
+                }
+              } else {
+                if (order.side === 'SELL') {
+                  // Entry orders for SHORT
+                  totalEntryValue += qty * price
+                  totalEntryQty += qty
+                } else {
+                  // Exit orders for SHORT
+                  totalCloseValue += qty * price
+                  totalCloseQty += qty
+                }
+              }
+            }
+
+            // Calculate average prices
+            entryPrice = totalEntryQty > 0 ? totalEntryValue / totalEntryQty : 0
+            const avgClosePrice = totalCloseQty > 0 ? totalCloseValue / totalCloseQty : 0
+
             let realizedPnlSum = 0
             let commissionSum = 0
             let fundingFeeSum = 0
@@ -2531,45 +2570,6 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                 ? parseFloat(currentPositionData.unrealizedProfit)
                 : 0
             }
-
-            // Calculate entry price and average close price
-            let entryPrice = 0
-            let totalEntryValue = 0
-            let totalEntryQty = 0
-            let totalCloseValue = 0
-            let totalCloseQty = 0
-
-            for (const order of pos.orders) {
-              const qty = parseFloat(order.executedQty)
-              // We should now have actual trade prices from userTrades endpoint
-              const price = parseFloat(order.avgPrice) || parseFloat(order.price) || 0
-
-              if (pos.direction === 'LONG') {
-                if (order.side === 'BUY') {
-                  // Entry orders for LONG
-                  totalEntryValue += qty * price
-                  totalEntryQty += qty
-                } else {
-                  // Exit orders for LONG
-                  totalCloseValue += qty * price
-                  totalCloseQty += qty
-                }
-              } else {
-                if (order.side === 'SELL') {
-                  // Entry orders for SHORT
-                  totalEntryValue += qty * price
-                  totalEntryQty += qty
-                } else {
-                  // Exit orders for SHORT
-                  totalCloseValue += qty * price
-                  totalCloseQty += qty
-                }
-              }
-            }
-
-            // Calculate average prices
-            entryPrice = totalEntryQty > 0 ? totalEntryValue / totalEntryQty : 0
-            const avgClosePrice = totalCloseQty > 0 ? totalCloseValue / totalCloseQty : 0
 
             positionHistory.push({
               symbol: pos.symbol,

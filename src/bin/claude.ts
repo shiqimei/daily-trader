@@ -68,10 +68,10 @@ async function runClaude() {
         'mcp__binance__get_position_history',
         'mcp__memo__add_memo',
         'mcp__memo__list_memos',
-        'mcp__trading-system__get_trading_system',
-        'mcp__trading-system__update_trading_system',
-        'mcp__trading-system__revert_trading_system',
-        'mcp__trading-system__get_revision_history'
+        'mcp__tradingSystem__get_trading_system',
+        'mcp__tradingSystem__update_trading_system',
+        'mcp__tradingSystem__revert_trading_system',
+        'mcp__tradingSystem__get_revision_history'
       ],
       disallowedTools: [
         'Task',

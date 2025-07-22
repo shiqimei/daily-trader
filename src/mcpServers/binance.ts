@@ -2193,16 +2193,59 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               symbol,
               limit: 1000
             }
-            const symbolOrders = await makeRequest(
+            // Fetch trades instead of orders to get actual execution prices
+            const symbolTrades = await makeRequest(
               config,
-              '/fapi/v1/allOrders',
-              ordersParams,
+              '/fapi/v1/userTrades',
+              {
+                symbol,
+                startTime,
+                endTime,
+                limit: 1000
+              },
               'GET',
               true
             )
 
-            // Add all filled orders (we'll handle time filtering later for position tracking)
-            const filledOrders = symbolOrders.filter((o: any) => o.status === 'FILLED')
+            // Convert trades to order-like format for compatibility
+            const tradesAsOrders = symbolTrades.map((trade: any) => ({
+              symbol: trade.symbol,
+              orderId: trade.orderId,
+              side: trade.side,
+              price: trade.price,
+              avgPrice: trade.price,
+              executedQty: trade.qty,
+              time: trade.time,
+              status: 'FILLED',
+              commission: trade.commission,
+              commissionAsset: trade.commissionAsset,
+              realizedPnl: trade.realizedPnl
+            }))
+
+            // Group trades by orderId to get aggregated order data
+            const orderMap: { [key: string]: any } = {}
+            tradesAsOrders.forEach((trade: any) => {
+              if (!orderMap[trade.orderId]) {
+                orderMap[trade.orderId] = {
+                  ...trade,
+                  trades: [trade]
+                }
+              } else {
+                // Aggregate quantity and calculate weighted average price
+                const existingOrder = orderMap[trade.orderId]
+                const totalQty = parseFloat(existingOrder.executedQty) + parseFloat(trade.executedQty)
+                const weightedPrice = (parseFloat(existingOrder.price) * parseFloat(existingOrder.executedQty) + 
+                                     parseFloat(trade.price) * parseFloat(trade.executedQty)) / totalQty
+                
+                existingOrder.executedQty = totalQty.toString()
+                existingOrder.price = weightedPrice.toString()
+                existingOrder.avgPrice = weightedPrice.toString()
+                existingOrder.trades.push(trade)
+                existingOrder.time = Math.min(existingOrder.time, trade.time)
+              }
+            })
+
+            const filledOrders = Object.values(orderMap)
             allOrders = allOrders.concat(filledOrders)
 
             // Get income for this symbol - paginate to get all records
@@ -2370,24 +2413,24 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               currentPos.amount = Math.abs(netAmount)
               currentPos.maxSize = Math.max(currentPos.maxSize, Math.abs(netAmount))
 
-              // Check if position closed (returned to zero)
+              // Check if position closed (returned to zero or very close to zero)
               if (Math.abs(netAmount) < 0.00000001) {
                 currentPos.closeTime = order.time
                 currentPos.closedSize = currentPos.maxSize
                 positions.push(currentPos)
                 currentPos = null
               }
-              // Check if position reversed (crossed zero to opposite side)
+              // Check if position reversed (crossed zero to opposite side) but only if significant amount remains
               else if (
-                (prevNetAmount > 0 && netAmount < 0) ||
-                (prevNetAmount < 0 && netAmount > 0)
+                ((prevNetAmount > 0 && netAmount < 0) || (prevNetAmount < 0 && netAmount > 0)) &&
+                Math.abs(netAmount) > 0.00000001
               ) {
                 // Close current position
                 currentPos.closeTime = order.time
                 currentPos.closedSize = currentPos.maxSize
                 positions.push(currentPos)
 
-                // Start new reversed position
+                // Start new reversed position with the remainder
                 currentPos = {
                   symbol: sym,
                   direction: netAmount > 0 ? 'LONG' : 'SHORT',
@@ -2401,7 +2444,9 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           }
 
           // Handle any open position at the end
-          if (currentPos && Math.abs(netAmount) > 0.00000001) {
+          // Only add position if we actually have an open position in the account
+          const actualPositionAmt = currentAccountPosition ? parseFloat(currentAccountPosition.positionAmt) : 0
+          if (currentPos && Math.abs(netAmount) > 0.00000001 && Math.abs(actualPositionAmt) > 0.00000001) {
             currentPos.closeTime = null
             currentPos.amount = Math.abs(netAmount)
             currentPos.closedSize = currentPos.maxSize - currentPos.amount
@@ -2449,6 +2494,23 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               }
             })
 
+            // Fallback PnL calculation if no income records found
+            if (positionIncome.length === 0 && pos.closedSize > 0) {
+              // Calculate PnL from price difference
+              const avgEntryPrice = entryPrice
+              const avgExitPrice = totalCloseValue / totalCloseQty
+              
+              if (pos.direction === 'LONG') {
+                realizedPnlSum = (avgExitPrice - avgEntryPrice) * pos.closedSize
+              } else {
+                realizedPnlSum = (avgEntryPrice - avgExitPrice) * pos.closedSize
+              }
+              
+              // Estimate commission as 0.1% of trade value (0.05% maker fee * 2 for entry and exit)
+              const estimatedCommission = -(avgEntryPrice * pos.closedSize * 0.001)
+              commissionSum = estimatedCommission
+            }
+            
             const netRealizedPnl = realizedPnlSum + commissionSum + fundingFeeSum
             const totalFees = commissionSum + fundingFeeSum
 
@@ -2470,7 +2532,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
             for (const order of pos.orders) {
               const qty = parseFloat(order.executedQty)
-              const price = parseFloat(order.price) || parseFloat(order.avgPrice) || 0
+              // We should now have actual trade prices from userTrades endpoint
+              const price = parseFloat(order.avgPrice) || parseFloat(order.price) || 0
 
               if (pos.direction === 'LONG') {
                 if (order.side === 'BUY') {

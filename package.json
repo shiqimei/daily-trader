@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "npx tsx src/bin/claude.ts",
-    "serve-memos": "npx tsx src/bin/serve-memos.ts",
+    "serve-dashboard": "npx tsx src/bin/serve-dashboard.ts",
+    "trading-system": "npx tsx src/mcpServers/tradingSystem.ts",
     "inspect": "npx @modelcontextprotocol/inspector@latest"
   },
   "packageManager": "pnpm@10.13.1",
@@ -13,9 +14,12 @@
     "@anthropic-ai/claude-code": "^1.0.53",
     "@aws-sdk/client-bedrock-runtime": "3.844.0",
     "@modelcontextprotocol/sdk": "^1.15.1",
+    "@types/express": "^5.0.3",
     "better-sqlite3": "^12.2.0",
     "dayjs": "^1.11.13",
+    "diff": "^8.0.2",
     "dotenv": "17.2.0",
+    "express": "^5.1.0",
     "pino": "^9.7.0",
     "pino-pretty": "^13.0.0"
   },

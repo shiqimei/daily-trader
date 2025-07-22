@@ -8,10 +8,15 @@ Our goal is to make money more efficiently. Improve our entry/exit strategy, ris
 2. Use `mcp__memo__list_memos` to get all memos
 3. Review recently closed positios and memos, do self-reflection, to see if any improvements we can do for our trading system.
 
-- ALWAYS do post-mortem after a postion has been closed, then update our trading system if some lessions learned
-- ALWAYS update the trading sytem if we learned some lessons from the mistakes
-- ALWAYS keep our trading system subjective, precise, and maintainable
-- Never update the trading system if we didn't make any mistakes or no lessons learned
+4. **MANDATORY ACTIONS (ZERO TOLERANCE)**:
+
+   - ALWAYS do post-mortem after a postion has been closed, then update our trading system if some lessions learned
+   - ALWAYS update the trading sytem if we learned some lessons from the mistakes
+   - ALWAYS keep our trading system subjective, precise, and maintainable
+   - ALWAYS make minimal changes to our trading system to avoid breaking our trading system.
+
+5. **FORBIDDEN ACTIONS (AUTOMATIC VIOLATION)**:
+   - Never update the trading system if we didn't make any mistakes or no lessons learned
 
 # How to write & maintain a good trading sytem?
 

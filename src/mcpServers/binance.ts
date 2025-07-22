@@ -528,6 +528,23 @@ const binanceTools: Tool[] = [
         limit: { type: 'number', description: 'Number of orders', default: 50 }
       }
     }
+  },
+  // Position History
+  {
+    name: 'get_position_history',
+    description: 'Get historical closed and partially closed positions with PnL details',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        symbols: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Trading pair symbols (default: ["BTCUSDC", "ETHUSDC"])'
+        },
+        last_days: { type: 'number', description: 'Number of days to look back', default: 7 },
+        limit: { type: 'number', description: 'Number of positions to return (max: 7)', default: 7 }
+      }
+    }
   }
 ]
 
@@ -2131,6 +2148,452 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                 null,
                 2
               )
+            }
+          ]
+        }
+      }
+
+      case 'get_position_history': {
+        const {
+          symbols,
+          last_days = 7,
+          limit = 50
+        } = args as {
+          symbols?: string[]
+          last_days?: number
+          limit?: number
+        }
+
+        // Use default symbols if not provided or empty
+        const symbolsToUse = !symbols || symbols.length === 0 ? ['BTCUSDC', 'ETHUSDC'] : symbols
+
+        // Calculate time range based on last_days
+        const now = Date.now()
+        const startTime = now - last_days * 24 * 60 * 60 * 1000
+        const endTime = now
+
+        // Collect all orders and income for all symbols
+        let allOrders: any[] = []
+        let incomeHistory: any[] = []
+
+        // Get account data once for all symbols
+        let accountData: any = null
+        try {
+          accountData = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
+        } catch (error: any) {
+          // Continue without account data
+        }
+
+        // Fetch data for each symbol
+        const fetchErrors: any[] = []
+        for (const symbol of symbolsToUse) {
+          try {
+            // Get all orders for this symbol without time restriction first
+            const ordersParams: any = {
+              symbol,
+              limit: 1000
+            }
+            const symbolOrders = await makeRequest(
+              config,
+              '/fapi/v1/allOrders',
+              ordersParams,
+              'GET',
+              true
+            )
+
+            // Add all filled orders (we'll handle time filtering later for position tracking)
+            const filledOrders = symbolOrders.filter((o: any) => o.status === 'FILLED')
+            allOrders = allOrders.concat(filledOrders)
+
+            // Get income for this symbol - paginate to get all records
+            let allIncomeForSymbol: any[] = []
+            let currentEndTime = endTime
+
+            // Binance API returns max 1000 records per request, so we need to paginate
+            while (true) {
+              const incomeParams: any = {
+                symbol,
+                limit: 1000,
+                startTime,
+                endTime: currentEndTime
+              }
+              const batch = await makeRequest(config, '/fapi/v1/income', incomeParams, 'GET', true)
+
+              if (batch.length === 0) {
+                break // No more records
+              }
+
+              allIncomeForSymbol = allIncomeForSymbol.concat(batch)
+
+              // If we got less than 1000 records, we've reached the end
+              if (batch.length < 1000) {
+                break
+              }
+
+              // Set the endTime to the oldest record's time minus 1ms for next batch
+              const oldestTime = Math.min(...batch.map((inc: any) => inc.time))
+              currentEndTime = oldestTime - 1
+
+              // Safety check to prevent infinite loop
+              if (currentEndTime < startTime) {
+                break
+              }
+            }
+
+            incomeHistory = incomeHistory.concat(allIncomeForSymbol)
+          } catch (error: any) {
+            // Record the error for debugging
+            fetchErrors.push({
+              symbol,
+              error: error.message || 'Unknown error',
+              code: error.code
+            })
+          }
+        }
+
+        // Group orders by symbol
+        const ordersBySymbol: { [key: string]: any[] } = {}
+        allOrders.forEach((order: any) => {
+          if (order.status === 'FILLED') {
+            if (!ordersBySymbol[order.symbol]) {
+              ordersBySymbol[order.symbol] = []
+            }
+            ordersBySymbol[order.symbol].push(order)
+          }
+        })
+
+        // Group income by symbol
+        const incomeBySymbol: { [key: string]: any[] } = {}
+        incomeHistory.forEach((income: any) => {
+          if (!incomeBySymbol[income.symbol]) {
+            incomeBySymbol[income.symbol] = []
+          }
+          incomeBySymbol[income.symbol].push(income)
+        })
+
+        // Process positions for each symbol
+        const positionHistory: any[] = []
+
+        // Also check symbols that have open positions but might not have recent orders
+        if (accountData?.positions) {
+          for (const pos of accountData.positions) {
+            if (parseFloat(pos.positionAmt) !== 0 && !ordersBySymbol[pos.symbol]) {
+              ordersBySymbol[pos.symbol] = []
+            }
+          }
+        }
+
+        for (const sym of Object.keys(ordersBySymbol)) {
+          const symbolOrders = ordersBySymbol[sym].sort((a: any, b: any) => a.time - b.time)
+          const symbolIncome = incomeBySymbol[sym] || []
+
+          // In one-way mode, track net position
+          let netAmount = 0
+          let positions: any[] = []
+          let currentPos: any = null
+
+          // Check if we have an open position currently
+          const currentAccountPosition = accountData?.positions?.find((p: any) => p.symbol === sym)
+          const hasOpenPosition =
+            currentAccountPosition && parseFloat(currentAccountPosition.positionAmt) !== 0
+
+          // If we have an open position, we need to reconstruct its history
+          if (hasOpenPosition) {
+            const currentPositionAmt = parseFloat(currentAccountPosition.positionAmt)
+
+            // Calculate what the starting position must have been based on orders
+            let reconstructedStartAmt = currentPositionAmt
+            // Work backwards through orders to find the starting amount
+            for (let i = symbolOrders.length - 1; i >= 0; i--) {
+              const order = symbolOrders[i]
+              const qty = parseFloat(order.executedQty)
+              if (order.side === 'BUY') {
+                reconstructedStartAmt -= qty
+              } else {
+                reconstructedStartAmt += qty
+              }
+            }
+
+            // If we have orders but the reconstructed start amount suggests we're missing the opening orders
+            if (symbolOrders.length > 0 && Math.abs(reconstructedStartAmt) > 0.00000001) {
+              // Create a synthetic position with the reconstructed starting amount
+              netAmount = reconstructedStartAmt
+              currentPos = {
+                symbol: sym,
+                direction: reconstructedStartAmt > 0 ? 'LONG' : 'SHORT',
+                entryTime: symbolOrders[0]?.time - 1 || Date.now() - 7 * 24 * 60 * 60 * 1000,
+                amount: Math.abs(reconstructedStartAmt),
+                maxSize: Math.abs(reconstructedStartAmt),
+                orders: [],
+                _synthetic: true
+              }
+            } else if (symbolOrders.length === 0) {
+              // No orders at all, create synthetic position for the entire current position
+              currentPos = {
+                symbol: sym,
+                direction: currentPositionAmt > 0 ? 'LONG' : 'SHORT',
+                entryTime: Date.now() - 7 * 24 * 60 * 60 * 1000, // Default to 7 days ago
+                amount: Math.abs(currentPositionAmt),
+                maxSize: Math.abs(currentPositionAmt),
+                orders: [],
+                _synthetic: true
+              }
+              netAmount = currentPositionAmt
+            }
+          }
+
+          for (const order of symbolOrders) {
+            const orderQty = parseFloat(order.executedQty)
+            const prevNetAmount = netAmount
+
+            // Update net amount based on order side
+            if (order.side === 'BUY') {
+              netAmount += orderQty
+            } else {
+              netAmount -= orderQty
+            }
+
+            // Check if we're starting a new position (from zero)
+            if (Math.abs(prevNetAmount) < 0.00000001 && Math.abs(netAmount) > 0.00000001) {
+              // New position starts
+              currentPos = {
+                symbol: sym,
+                direction: netAmount > 0 ? 'LONG' : 'SHORT',
+                entryTime: order.time,
+                amount: Math.abs(netAmount),
+                maxSize: Math.abs(netAmount),
+                orders: [order]
+              }
+            } else if (currentPos) {
+              // Update existing position
+              currentPos.orders.push(order)
+              currentPos.amount = Math.abs(netAmount)
+              currentPos.maxSize = Math.max(currentPos.maxSize, Math.abs(netAmount))
+
+              // Check if position closed (returned to zero)
+              if (Math.abs(netAmount) < 0.00000001) {
+                currentPos.closeTime = order.time
+                currentPos.closedSize = currentPos.maxSize
+                positions.push(currentPos)
+                currentPos = null
+              }
+              // Check if position reversed (crossed zero to opposite side)
+              else if (
+                (prevNetAmount > 0 && netAmount < 0) ||
+                (prevNetAmount < 0 && netAmount > 0)
+              ) {
+                // Close current position
+                currentPos.closeTime = order.time
+                currentPos.closedSize = currentPos.maxSize
+                positions.push(currentPos)
+
+                // Start new reversed position
+                currentPos = {
+                  symbol: sym,
+                  direction: netAmount > 0 ? 'LONG' : 'SHORT',
+                  entryTime: order.time,
+                  amount: Math.abs(netAmount),
+                  maxSize: Math.abs(netAmount),
+                  orders: [order]
+                }
+              }
+            }
+          }
+
+          // Handle any open position at the end
+          if (currentPos && Math.abs(netAmount) > 0.00000001) {
+            currentPos.closeTime = null
+            currentPos.amount = Math.abs(netAmount)
+            currentPos.closedSize = currentPos.maxSize - currentPos.amount
+            // Double-check direction based on final net amount
+            currentPos.direction = netAmount > 0 ? 'LONG' : 'SHORT'
+            positions.push(currentPos)
+          }
+
+          // Now calculate PnL for each position
+          for (const pos of positions) {
+            // Get the order IDs for this position to match with income
+            const positionOrderIds = pos.orders.map((o: any) => o.orderId)
+
+            // Filter income based on time range AND order IDs if available
+            const positionIncome = symbolIncome.filter((inc: any) => {
+              const timeMatch = pos.closeTime
+                ? inc.time >= pos.entryTime && inc.time <= pos.closeTime
+                : inc.time >= pos.entryTime
+
+              // If income has tradeId, try to match with our orders
+              if (inc.tradeId && positionOrderIds.length > 0) {
+                // Income should be related to trades from our position's orders
+                return timeMatch
+              }
+
+              return timeMatch
+            })
+
+            let realizedPnlSum = 0
+            let commissionSum = 0
+            let fundingFeeSum = 0
+
+            positionIncome.forEach((income: any) => {
+              const amount = parseFloat(income.income || '0')
+              switch (income.incomeType) {
+                case 'REALIZED_PNL':
+                  realizedPnlSum += amount
+                  break
+                case 'COMMISSION':
+                  commissionSum += amount
+                  break
+                case 'FUNDING_FEE':
+                  fundingFeeSum += amount
+                  break
+              }
+            })
+
+            const netRealizedPnl = realizedPnlSum + commissionSum + fundingFeeSum
+            const totalFees = commissionSum + fundingFeeSum
+
+            let unrealizedPnl = 0
+            if (!pos.closeTime && accountData) {
+              // Get current unrealized PnL from account for open positions
+              const currentPositionData = accountData.positions.find((p: any) => p.symbol === sym)
+              unrealizedPnl = currentPositionData
+                ? parseFloat(currentPositionData.unrealizedProfit)
+                : 0
+            }
+
+            // Calculate entry price and average close price
+            let entryPrice = 0
+            let totalEntryValue = 0
+            let totalEntryQty = 0
+            let totalCloseValue = 0
+            let totalCloseQty = 0
+
+            for (const order of pos.orders) {
+              const qty = parseFloat(order.executedQty)
+              const price = parseFloat(order.price) || parseFloat(order.avgPrice) || 0
+
+              if (pos.direction === 'LONG') {
+                if (order.side === 'BUY') {
+                  // Entry orders for LONG
+                  totalEntryValue += qty * price
+                  totalEntryQty += qty
+                } else {
+                  // Exit orders for LONG
+                  totalCloseValue += qty * price
+                  totalCloseQty += qty
+                }
+              } else {
+                if (order.side === 'SELL') {
+                  // Entry orders for SHORT
+                  totalEntryValue += qty * price
+                  totalEntryQty += qty
+                } else {
+                  // Exit orders for SHORT
+                  totalCloseValue += qty * price
+                  totalCloseQty += qty
+                }
+              }
+            }
+
+            // Calculate average prices
+            entryPrice = totalEntryQty > 0 ? totalEntryValue / totalEntryQty : 0
+            const avgClosePrice = totalCloseQty > 0 ? totalCloseValue / totalCloseQty : 0
+
+            positionHistory.push({
+              symbol: pos.symbol,
+              direction: pos.direction,
+              realized_pnl: parseFloat(realizedPnlSum.toFixed(8)),
+              net_realized_pnl: parseFloat(netRealizedPnl.toFixed(8)),
+              unrealized_pnl: unrealizedPnl,
+              total_fees: parseFloat(totalFees.toFixed(8)),
+              position_time_setup: new Date(pos.entryTime)
+                .toISOString()
+                .replace('T', ' ')
+                .substring(0, 19),
+              position_time_closed: pos.closeTime
+                ? new Date(pos.closeTime).toISOString().replace('T', ' ').substring(0, 19)
+                : null,
+              position_size_closed: parseFloat(pos.closedSize.toFixed(8)),
+              position_size_max: parseFloat(pos.maxSize.toFixed(8)),
+              position_entry_price: parseFloat(entryPrice.toFixed(8)),
+              position_avg_close_price: parseFloat(avgClosePrice.toFixed(8))
+            })
+          }
+        }
+
+        // Sort positions: open positions first (sorted by setup time desc), then closed positions (sorted by close time desc)
+        const sortedHistory = positionHistory
+          .sort((a, b) => {
+            // If both are open positions (null close time), sort by setup time desc
+            if (a.position_time_closed === null && b.position_time_closed === null) {
+              return (
+                new Date(b.position_time_setup).getTime() -
+                new Date(a.position_time_setup).getTime()
+              )
+            }
+
+            // If a is open and b is closed, a comes first
+            if (a.position_time_closed === null && b.position_time_closed !== null) {
+              return -1
+            }
+
+            // If b is open and a is closed, b comes first
+            if (a.position_time_closed !== null && b.position_time_closed === null) {
+              return 1
+            }
+
+            // If both are closed, sort by close time desc
+            return (
+              new Date(b.position_time_closed).getTime() -
+              new Date(a.position_time_closed).getTime()
+            )
+          })
+          .slice(0, limit)
+
+        // Add debug info if result is empty
+        if (sortedHistory.length === 0) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    positions: [],
+                    debug: {
+                      symbolsUsed: symbolsToUse,
+                      totalOrdersFetched: allOrders.length,
+                      totalIncomeRecords: incomeHistory.length,
+                      ordersBySymbol: Object.keys(ordersBySymbol).map(sym => ({
+                        symbol: sym,
+                        orderCount: ordersBySymbol[sym].length
+                      })),
+                      hasAccountData: !!accountData,
+                      accountPositions:
+                        accountData?.positions
+                          ?.filter((p: any) => parseFloat(p.positionAmt) !== 0)
+                          .map((p: any) => ({
+                            symbol: p.symbol,
+                            positionAmt: p.positionAmt,
+                            side: parseFloat(p.positionAmt) > 0 ? 'LONG' : 'SHORT'
+                          })) || [],
+                      startTime: new Date(startTime).toISOString(),
+                      endTime: new Date(endTime).toISOString(),
+                      fetchErrors: fetchErrors
+                    }
+                  },
+                  null,
+                  2
+                )
+              }
+            ]
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(sortedHistory, null, 2)
             }
           ]
         }

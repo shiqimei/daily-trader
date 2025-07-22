@@ -542,7 +542,7 @@ const binanceTools: Tool[] = [
           description: 'Trading pair symbols (default: ["BTCUSDC", "ETHUSDC"])'
         },
         last_days: { type: 'number', description: 'Number of days to look back', default: 7 },
-        limit: { type: 'number', description: 'Number of positions to return (max: 7)', default: 7 }
+        limit: { type: 'number', description: 'Number of positions to return (max: 5)', default: 5 }
       }
     }
   }
@@ -2233,10 +2233,13 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               } else {
                 // Aggregate quantity and calculate weighted average price
                 const existingOrder = orderMap[trade.orderId]
-                const totalQty = parseFloat(existingOrder.executedQty) + parseFloat(trade.executedQty)
-                const weightedPrice = (parseFloat(existingOrder.price) * parseFloat(existingOrder.executedQty) + 
-                                     parseFloat(trade.price) * parseFloat(trade.executedQty)) / totalQty
-                
+                const totalQty =
+                  parseFloat(existingOrder.executedQty) + parseFloat(trade.executedQty)
+                const weightedPrice =
+                  (parseFloat(existingOrder.price) * parseFloat(existingOrder.executedQty) +
+                    parseFloat(trade.price) * parseFloat(trade.executedQty)) /
+                  totalQty
+
                 existingOrder.executedQty = totalQty.toString()
                 existingOrder.price = weightedPrice.toString()
                 existingOrder.avgPrice = weightedPrice.toString()
@@ -2445,8 +2448,14 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
           // Handle any open position at the end
           // Only add position if we actually have an open position in the account
-          const actualPositionAmt = currentAccountPosition ? parseFloat(currentAccountPosition.positionAmt) : 0
-          if (currentPos && Math.abs(netAmount) > 0.00000001 && Math.abs(actualPositionAmt) > 0.00000001) {
+          const actualPositionAmt = currentAccountPosition
+            ? parseFloat(currentAccountPosition.positionAmt)
+            : 0
+          if (
+            currentPos &&
+            Math.abs(netAmount) > 0.00000001 &&
+            Math.abs(actualPositionAmt) > 0.00000001
+          ) {
             currentPos.closeTime = null
             currentPos.amount = Math.abs(netAmount)
             currentPos.closedSize = currentPos.maxSize - currentPos.amount
@@ -2499,18 +2508,18 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               // Calculate PnL from price difference
               const avgEntryPrice = entryPrice
               const avgExitPrice = totalCloseValue / totalCloseQty
-              
+
               if (pos.direction === 'LONG') {
                 realizedPnlSum = (avgExitPrice - avgEntryPrice) * pos.closedSize
               } else {
                 realizedPnlSum = (avgEntryPrice - avgExitPrice) * pos.closedSize
               }
-              
+
               // Estimate commission as 0.1% of trade value (0.05% maker fee * 2 for entry and exit)
               const estimatedCommission = -(avgEntryPrice * pos.closedSize * 0.001)
               commissionSum = estimatedCommission
             }
-            
+
             const netRealizedPnl = realizedPnlSum + commissionSum + fundingFeeSum
             const totalFees = commissionSum + fundingFeeSum
 

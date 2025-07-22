@@ -2,6 +2,9 @@ import { systemPrompt } from '@/prompts'
 import { logger } from '@/utils/logger'
 import { query } from '@anthropic-ai/claude-code'
 import dayjs from 'dayjs'
+import { config } from 'dotenv'
+
+config()
 
 async function sleep(seconds: number) {
   const totalMs = seconds * 1000

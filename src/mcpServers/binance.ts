@@ -138,7 +138,8 @@ const binanceTools: Tool[] = [
         },
         limit: {
           type: 'number',
-          description: 'Number of klines to return (min: 1d-10, 4h-20, 30m-50, 5m-50; max 1500)',
+          description:
+            'Number of klines to return (min: 1d-10, 4h-20, 30m-50, 15m-50, 5m-50; max 1500)',
           default: 100
         }
       },

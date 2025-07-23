@@ -16,3 +16,4 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
 `)
+

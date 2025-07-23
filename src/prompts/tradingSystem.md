@@ -64,11 +64,57 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 - NEVER trade without clear entry logic
 - NEVER enter without defined risk/reward
 - NEVER risk more than 30% per trade
+- NEVER enter positions after extended moves (>600pts BTC, >30pts ETH) without pullback
+- NEVER trade in extreme low volume conditions (<50 BTC on 5m consistently)
+- NEVER chase price after rejection from entry levels
 2. MANDATORY ACTIONS ✓
 - ALWAYS document entry reasoning in Decisions
 - ALWAYS calculate and state expected R:R ratio
 - ALWAYS use price action and klines as primary guide
 - ALWAYS set stops based on market structure
+- ALWAYS wait for volume confirmation on breakouts (>50 BTC on 5m)
+- ALWAYS respect support/resistance levels for exits
+```
+
+# Enhanced Entry Criteria (NEW)
+
+```yml
+Valid Entry Conditions (ALL must be met):
+1. Risk/Reward: Minimum 2:1 R:R ratio available
+2. Volume Confirmation:
+   - Breakout entries: Need >50 BTC volume on 5m bar
+   - Reversal entries: Need volume spike >2x average
+   - Avoid entries during volume exhaustion (<20 BTC on 5m)
+3. Price Extension Limits:
+   - BTC: No longs after >600pt rally without 200pt+ pullback
+   - ETH: No longs after >30pt rally without 10pt+ pullback
+   - Reverse for shorts
+4. Time-Based Filters:
+   - No new entries in first 5min after major news/volatility
+   - Exit consideration if position stagnant >30min
+5. Market Structure:
+   - Clear support/resistance levels identified
+   - No entries in choppy/ranging markets without clear levels
+   - Trend alignment on 15m minimum
+```
+
+# Position Management Discipline (ENHANCED)
+
+```yml
+Early Warning Exits (Before Stop Loss):
+1. Volume Exhaustion Exit:
+   - If entered on volume surge but volume drops >80% within 10min → Exit 50%
+   - If no volume support after 15min → Exit remaining
+2. Rejection Exit:
+   - Price rejected from entry level twice → Exit immediately
+   - Failed to break key resistance/support after 2 attempts → Exit
+3. Time-Based Exits:
+   - No profit after 30min → Reduce position by 50%
+   - Negative after 45min → Exit completely
+4. Structure Break Exit:
+   - Support broken (for longs) → Exit immediately
+   - Resistance broken (for shorts) → Exit immediately
+   - Don't wait for stop loss if structure clearly broken
 ```
 
 # Memo Content Format
@@ -142,4 +188,23 @@ Action: LONG @ 3725.81
 Watch: Resistance 3756 (TP target), Support 3710 (stop loss level), 3703 recent low must hold
 
 ToolCalls: mcp__binance__get_account, mcp__binance__get_open_orders, mcp__memo__list_memos, mcp__binance__get_ticker_24hr, mcp__binance__get_klines, mcp__binance__calculate_position_size, mcp__binance__open_long, mcp__binance__set_stop_loss, mcp__binance__set_take_profit, mcp__memo__add_memo
+```
+
+## ❌ Poor Entry Example (What to Avoid)
+
+```yml
+Market Conditions:
+- BTC: Just rallied 813pts from 117,882 to 118,695 without pullback
+- Volume: Collapsed to 10-20 BTC on 5m (extreme exhaustion)
+- R:R: Only 0.6:1 available (420pt target vs 698pt stop)
+- Entry: Would be buying at resistance after extended move
+
+Why NO TRADE:
+1. Extended >600pts without pullback (violates rule)
+2. Volume exhaustion <20 BTC (below 50 BTC minimum)
+3. R:R only 0.6:1 (below 2:1 minimum)
+4. Buying at resistance after 0.69% intraday move
+5. No edge - all factors negative
+
+Correct Action: WAIT for pullback to 118,200-118,300 for proper entry
 ```

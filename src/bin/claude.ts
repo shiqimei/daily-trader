@@ -70,10 +70,6 @@ async function runClaude() {
         'mcp__binance__get_position_history',
         'mcp__memo__add_memo',
         'mcp__memo__list_memos',
-        'mcp__tradingSystem__get_trading_system',
-        'mcp__tradingSystem__update_trading_system',
-        'mcp__tradingSystem__revert_trading_system',
-        'mcp__tradingSystem__get_revision_history',
         'mcp__wechat__push_notification'
       ],
       disallowedTools: [
@@ -103,11 +99,6 @@ async function runClaude() {
           type: 'stdio',
           command: 'npx',
           args: ['-y', 'tsx', './src/mcpServers/memo.ts']
-        },
-        tradingSystem: {
-          type: 'stdio',
-          command: 'npx',
-          args: ['-y', 'tsx', './src/mcpServers/tradingSystem.ts']
         },
         wechat: {
           type: 'stdio',

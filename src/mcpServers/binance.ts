@@ -138,7 +138,7 @@ const binanceTools: Tool[] = [
         },
         limit: {
           type: 'number',
-          description: 'Number of klines to return (max 1500)',
+          description: 'Number of klines to return (min: 50; max 1500)',
           default: 100
         }
       },
@@ -1927,7 +1927,6 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           ]
         }
       }
-
 
       case 'clear_stops': {
         const { symbol } = args as { symbol: string }

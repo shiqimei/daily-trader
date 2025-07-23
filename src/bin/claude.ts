@@ -108,6 +108,11 @@ async function runClaude() {
           type: 'stdio',
           command: 'npx',
           args: ['-y', 'tsx', './src/mcpServers/tradingSystem.ts']
+        },
+        wechat: {
+          type: 'stdio',
+          command: 'npx',
+          args: ['-y', 'tsx', './src/mcpServers/wechat.ts']
         }
       },
       executable: 'node',

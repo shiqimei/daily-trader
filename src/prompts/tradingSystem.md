@@ -43,6 +43,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ Clearly document entry logic and expected R:R in memo
 5. Position Management
     ☐ Entry → Set SL based on market structure, TP1 on 1R  → mcp__binance__set_stop_loss, mcp__binance__set_take_profit
+    ☐ CRITICAL: Verify stop loss order exists → mcp__binance__get_open_orders (MUST see STOP_MARKET order)
     ☐ NEW POSITION OPENED → Send WeChat notification → mcp__wechat__push_notification
       Title: "🟢 NEW POSITION: [SYMBOL] [LONG/SHORT]"  
       Content: "Entry: [entry_price] | Symbol: [symbol] | Balance: [current_balance] | Direction: [position_side] | Size: [position_size]"
@@ -53,6 +54,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
       • Position 20-50%: Exit if retracement exceeds 60% from high, mcp__binance__close_position
       • Position < 20%: Exit if retracement exceeds 50% from high, mcp__binance__close_position
     ☐ Structure Exit: Close position immediately if market structure breaks → mcp__binance__close_position
+    ☐ Stop Loss Breach: If price > stop (for shorts) or < stop (for longs) → IMMEDIATE mcp__binance__close_position
     ☐ POSITION CLOSED → Send WeChat notification → mcp__wechat__push_notification
       Title: "🔴 POSITION CLOSED: [SYMBOL] [LONG/SHORT]"
       Content: "Avg Close: [avg_close_price] | Symbol: [symbol] | Balance: [current_balance] | PnL: [realized_pnl] ([pnl_percentage]%)"
@@ -73,13 +75,16 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 - NEVER enter positions after extended moves (>600pts BTC, >30pts ETH) without pullback
 - NEVER trade in extreme low volume conditions (<50 BTC on 5m consistently)
 - NEVER chase price after rejection from entry levels
+- NEVER assume stop orders are active without verification
 2. MANDATORY ACTIONS ✓
 - ALWAYS document entry reasoning in Decisions
 - ALWAYS calculate and state expected R:R ratio
 - ALWAYS use price action and klines as primary guide
 - ALWAYS set stops based on market structure
+- ALWAYS verify stop loss order exists via mcp__binance__get_open_orders
 - ALWAYS wait for volume confirmation on breakouts (>50 BTC on 5m)
 - ALWAYS respect support/resistance levels for exits
+- ALWAYS close position manually if stop level is breached
 ```
 
 # Enhanced Entry Criteria (NEW)
@@ -121,6 +126,22 @@ Early Warning Exits (Before Stop Loss):
    - Support broken (for longs) → Exit immediately
    - Resistance broken (for shorts) → Exit immediately
    - Don't wait for stop loss if structure clearly broken
+
+CRITICAL STOP LOSS MANAGEMENT:
+1. After Opening Position:
+   - MUST see STOP_MARKET order in mcp__binance__get_open_orders
+   - If no stop order visible → Recreate immediately
+   - Document stop order ID in memo
+2. During Position:
+   - Check stop order exists every 5 minutes
+   - If price within 50pts of stop → Prepare manual close
+   - If price breaches stop level → IMMEDIATE manual close
+3. Stop Loss Verification Checklist:
+   ☐ Set stop order → mcp__binance__set_stop_loss
+   ☐ Verify order exists → mcp__binance__get_open_orders
+   ☐ Note order ID → Document in memo
+   ☐ If missing → Recreate immediately
+   ☐ If breached → Manual close position
 ```
 
 # Memo Content Format
@@ -133,12 +154,13 @@ POS:
 - [SYMBOL] [LONG/SHORT] [size] @ entry_price last_price
   • PNL: net_realized_pnl [net_realized_pnl] | net_realized_pnl [realized_pnl] | unrealized_pnl [unrealized_pnl]
   • P/L: [amount] ([R-multiple])
-  • Stop: @ [stop_price] (based on [price structure reason])
+  • Stop: @ [stop_price] (based on [price structure reason]) | Order ID: [order_id if exists]
   • Target: @ [target_price] ([based on resistance/support/pattern])
     [Review and check checklist item below if completed]
     ☐ TP1: 1R → Close 50% position + Move SL to BE
     ☐ TP2: 2R → Close another 30% (total 80% closed)
     ☐ TP3: Retracement exit or strcuture-based exit
+    ☐ SL Order Verified: [YES/NO] - Order ID: [order_id]
   • Action: [HOLD/TRAIL/CLOSE]
 
 [For each symbol]
@@ -164,21 +186,23 @@ POS:
 - BTCUSDC LONG 0.248 @ 117295.7
   • PNL: net_realized_pnl [0] | net_realized_pnl [0] | unrealized_pnl [0]
   • P/L: 0 (0R)
-  • Stop: @ 117190 (based on below recent 117190 support)
+  • Stop: @ 117190 (based on below recent 117190 support) | Order ID: 20852931468
   • Target: @ 117500 (recent resistance level)
     ☐ TP1: 1R → Close 50% position + Move SL to BE
     ☐ TP2: 2R → Close another 30% (total 80% closed)
     ☐ TP3: Retracement exit or structure-based exit
+    ☐ SL Order Verified: YES - Order ID: 20852931468
   • Action: HOLD
 
 - ETHUSDC LONG 8.019 @ 3725.81
   • PNL: net_realized_pnl [0] | net_realized_pnl [0] | unrealized_pnl [0]
   • P/L: 0 (0R)
-  • Stop: @ 3710 (based on below recent 3703 low)
+  • Stop: @ 3710 (based on below recent 3703 low) | Order ID: 123456789
   • Target: @ 3756 (recent resistance zone)
     ☐ TP1: 1R → Close 50% position + Move SL to BE
     ☐ TP2: 2R → Close another 30% (total 80% closed)
     ☐ TP3: Retracement exit or structure-based exit
+    ☐ SL Order Verified: YES - Order ID: 123456789
   • Action: HOLD
 
 === BTCUSDC ===
@@ -193,7 +217,7 @@ Price: 3725.81 (+3.372%)
 Action: LONG @ 3725.81
 Watch: Resistance 3756 (TP target), Support 3710 (stop loss level), 3703 recent low must hold
 
-ToolCalls: mcp__binance__get_account, mcp__binance__get_open_orders, mcp__memo__list_memos, mcp__binance__get_ticker_24hr, mcp__binance__get_klines, mcp__binance__calculate_position_size, mcp__binance__open_long, mcp__binance__set_stop_loss, mcp__binance__set_take_profit, mcp__wechat__push_notification, mcp__memo__add_memo
+ToolCalls: mcp__binance__get_account, mcp__binance__get_open_orders, mcp__memo__list_memos, mcp__binance__get_ticker_24hr, mcp__binance__get_klines, mcp__binance__calculate_position_size, mcp__binance__open_long, mcp__binance__set_stop_loss, mcp__binance__set_take_profit, mcp__binance__get_open_orders, mcp__wechat__push_notification, mcp__memo__add_memo
 ```
 
 ## ❌ Poor Entry Example (What to Avoid)
@@ -213,4 +237,29 @@ Why NO TRADE:
 5. No edge - all factors negative
 
 Correct Action: WAIT for pullback to 118,200-118,300 for proper entry
+```
+
+## ⚠️ Stop Loss Failure Example (Critical Lesson)
+
+```yml
+CRITICAL FAILURE IDENTIFIED:
+- Position: BTCUSDC SHORT @ 118,272.5
+- Stop Level: 118,500 (noted in memo only)
+- Current Price: 118,571.3 (71pts above stop)
+- Issue: Stop order not set on exchange
+- Loss: -6.77 USDC (could have been -3.35 USDC)
+
+Lesson Learned:
+1. NEVER assume stop orders are active
+2. ALWAYS verify via mcp__binance__get_open_orders
+3. ALWAYS note stop order ID in memo
+4. ALWAYS close manually if stop breached
+
+New Protocol:
+After EVERY position entry:
+☐ Set stop order
+☐ Get open orders
+☐ Verify STOP_MARKET order exists
+☐ Document order ID
+☐ If missing → Recreate immediately
 ```

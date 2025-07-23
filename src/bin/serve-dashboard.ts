@@ -272,14 +272,20 @@ function renderHTML(memos: Memo[]): string {
   const memoCards = memos
     .map(
       memo => `
-    <div class="memo-card">
+    <div class="memo-card" data-memo-id="${memo.id}">
       <div class="memo-header">
-        <div class="memo-id">Memo #${memo.id}</div>
-        <div class="memo-date">${formatDateTime(memo.date)}</div>
+        <div class="memo-header-left">
+          <div class="memo-id">Memo #${memo.id}</div>
+          <div class="memo-date">${formatDateTime(memo.date)}</div>
+        </div>
+        <button class="copy-btn" onclick="copyMemo(${memo.id}, this)">
+          📋 Copy
+        </button>
       </div>
       <div class="memo-content">
         ${formatMemoContent(memo.content)}
       </div>
+      <textarea class="memo-raw-content" style="display: none;">${memo.content}</textarea>
     </div>
   `
     )
@@ -449,6 +455,39 @@ function renderHTML(memos: Memo[]): string {
       background-color: hsl(var(--muted) / 0.5);
       border-bottom: 1px solid hsl(var(--border));
       padding: 1rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .memo-header-left {
+      flex: 1;
+    }
+
+    .copy-btn {
+      background: none;
+      border: 1px solid hsl(var(--border));
+      color: hsl(var(--muted-foreground));
+      cursor: pointer;
+      padding: 0.5rem;
+      border-radius: calc(var(--radius) / 2);
+      transition: all 0.2s ease;
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .copy-btn:hover {
+      background-color: hsl(var(--accent));
+      color: hsl(var(--accent-foreground));
+      border-color: hsl(var(--accent));
+    }
+
+    .copy-btn.copied {
+      background-color: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+      border-color: hsl(var(--primary));
     }
 
     .memo-id {
@@ -885,14 +924,58 @@ function renderHTML(memos: Memo[]): string {
 
 
 
+    // Copy memo function
+    window.copyMemo = async function(memoId, button) {
+      try {
+        // Find the memo card and get the raw content
+        const memoCard = document.querySelector(\`[data-memo-id="\${memoId}"]\`);
+        const rawContentTextarea = memoCard.querySelector('.memo-raw-content');
+        const content = rawContentTextarea.value;
+
+        await navigator.clipboard.writeText(content);
+        
+        // Visual feedback
+        const originalText = button.innerHTML;
+        button.innerHTML = '✅ Copied!';
+        button.classList.add('copied');
+        
+        setTimeout(() => {
+          button.innerHTML = originalText;
+          button.classList.remove('copied');
+        }, 2000);
+      } catch (error) {
+        console.error('Failed to copy memo:', error);
+        // Fallback for older browsers
+        const memoCard = document.querySelector(\`[data-memo-id="\${memoId}"]\`);
+        const rawContentTextarea = memoCard.querySelector('.memo-raw-content');
+        const content = rawContentTextarea.value;
+        
+        const textArea = document.createElement('textarea');
+        textArea.value = content;
+        textArea.style.position = 'fixed';
+        textArea.style.top = '0';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        // Visual feedback
+        const originalText = button.innerHTML;
+        button.innerHTML = '✅ Copied!';
+        button.classList.add('copied');
+        
+        setTimeout(() => {
+          button.innerHTML = originalText;
+          button.classList.remove('copied');
+        }, 2000);
+      }
+    };
+
     // Load trading system data on page load
     loadTradingSystem();
     loadRevisionHistory();
 
-    // Auto-refresh every 30 seconds
-    setInterval(() => {
-      location.reload();
-    }, 30000);
   </script>
 </body>
 </html>

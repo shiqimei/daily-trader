@@ -63,7 +63,6 @@ async function runClaude() {
         'mcp__binance__reduce_position',
         'mcp__binance__set_stop_loss',
         'mcp__binance__set_take_profit',
-        'mcp__binance__set_trailing_stop',
         'mcp__binance__clear_stops',
         'mcp__binance__cancel_order',
         'mcp__binance__cancel_all_orders',

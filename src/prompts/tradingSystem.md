@@ -43,6 +43,9 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ Clearly document entry logic and expected R:R in memo
 5. Position Management
     ☐ Entry → Set SL based on market structure, TP1 on 1R  → mcp__binance__set_stop_loss, mcp__binance__set_take_profit
+    ☐ NEW POSITION OPENED → Send WeChat notification → mcp__wechat__push_notification
+      Title: "🟢 NEW POSITION: [SYMBOL] [LONG/SHORT]"  
+      Content: "Entry: [entry_price] | Symbol: [symbol] | Balance: [current_balance] | Direction: [position_side] | Size: [position_size]"
     ☐ 1R → Close 50% position + Move stop loss to breakeven -> mcp__binance__close_position, mcp__binance__set_stop_loss
     ☐ 2R → Close another 30% (total 80% closed) + Trail stop based on price action -> mcp__binance__close_position
     ☐ Retracement Exit:
@@ -50,6 +53,9 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
       • Position 20-50%: Exit if retracement exceeds 60% from high, mcp__binance__close_position
       • Position < 20%: Exit if retracement exceeds 50% from high, mcp__binance__close_position
     ☐ Structure Exit: Close position immediately if market structure breaks → mcp__binance__close_position
+    ☐ POSITION CLOSED → Send WeChat notification → mcp__wechat__push_notification
+      Title: "🔴 POSITION CLOSED: [SYMBOL] [LONG/SHORT]"
+      Content: "Avg Close: [avg_close_price] | Symbol: [symbol] | Balance: [current_balance] | PnL: [realized_pnl] ([pnl_percentage]%)"
     ☐ Order Management: Verify SL/TP orders exist and recreate if missing → mcp__binance__get_open_orders, mcp__binance__set_stop_loss, mcp__binance__set_take_profit
     ☐ Breakeven Protection: Set breakeven stop loss if price reached 1R previously and no BE order exists → mcp__binance__set_stop_loss
     ☐ Fallback Exit: Close position immediately if price reached 1R previously but now showing negative profit → mcp__binance__close_position
@@ -142,7 +148,7 @@ Price: [current_price] ([24hr_change_%])
 Action: [LONG/SHORT @ price / HOLDING / WAIT]
 Watch: [key price levels to monitor]
 
-ToolCalls: [Comma-separated list of all MCP tools utilized with args]
+ToolCalls: [Comma-separated list of all MCP tools utilized with args including mcp__wechat__push_notification]
 ```
 
 # Examples
@@ -187,7 +193,7 @@ Price: 3725.81 (+3.372%)
 Action: LONG @ 3725.81
 Watch: Resistance 3756 (TP target), Support 3710 (stop loss level), 3703 recent low must hold
 
-ToolCalls: mcp__binance__get_account, mcp__binance__get_open_orders, mcp__memo__list_memos, mcp__binance__get_ticker_24hr, mcp__binance__get_klines, mcp__binance__calculate_position_size, mcp__binance__open_long, mcp__binance__set_stop_loss, mcp__binance__set_take_profit, mcp__memo__add_memo
+ToolCalls: mcp__binance__get_account, mcp__binance__get_open_orders, mcp__memo__list_memos, mcp__binance__get_ticker_24hr, mcp__binance__get_klines, mcp__binance__calculate_position_size, mcp__binance__open_long, mcp__binance__set_stop_loss, mcp__binance__set_take_profit, mcp__wechat__push_notification, mcp__memo__add_memo
 ```
 
 ## ❌ Poor Entry Example (What to Avoid)

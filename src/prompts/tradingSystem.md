@@ -28,9 +28,9 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ mcp__memo__list_memos → Review recent trades
 2. GET klines & featuring candlesticks
     ☐ mcp__binance__get_klines → Retrieve 5m, 15m, 4h, 1d timeframes for BTCUSDC & ETHUSDC
-    ☐ [for klines in each timeframe 5m,15m,4h,1d] output:
-      Date,Open,High,Low,Close,Volume,Kline Type,Key Features
 3. Market Analysis
+    - Kline Annotation: For klines in each timeframe 5m,15m,4h,1d], output CSV format like below:
+      Date,Open,High,Low,Close,Volume,Kline Type,Key Features
     - Price Action: Analyze kline patterns, momentum, volume
     - Support/Resistance: Identify key levels from price history
     - Market Context: Overall trend, volatility, market sentiment
@@ -45,7 +45,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ Entry → Set SL based on market structure, TP1 on 1R  → mcp__binance__set_stop_loss, mcp__binance__set_take_profit
     ☐ CRITICAL: Verify stop loss order exists → mcp__binance__get_open_orders (MUST see STOP_MARKET order)
     ☐ NEW POSITION OPENED → Send WeChat notification → mcp__wechat__push_notification
-      Title: "🟢 NEW POSITION: [SYMBOL] [LONG/SHORT]"  
+      Title: "🟢 NEW POSITION: [SYMBOL] [LONG/SHORT]"
       Content: "Entry: [entry_price] | Symbol: [symbol] | Balance: [current_balance] | Direction: [position_side] | Size: [position_size]"
     ☐ 1R → Close 50% position + Move stop loss to breakeven -> mcp__binance__close_position, mcp__binance__set_stop_loss
     ☐ 2R → Close another 30% (total 80% closed) + Trail stop based on price action -> mcp__binance__close_position
@@ -93,20 +93,20 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 Valid Entry Conditions (ALL must be met):
 1. Risk/Reward: Minimum 2:1 R:R ratio available
 2. Volume Confirmation:
-   - Breakout entries: Need >50 BTC volume on 5m bar
-   - Reversal entries: Need volume spike >2x average
-   - Avoid entries during volume exhaustion (<20 BTC on 5m)
+  - Breakout entries: Need >50 BTC volume on 5m bar
+  - Reversal entries: Need volume spike >2x average
+  - Avoid entries during volume exhaustion (<20 BTC on 5m)
 3. Price Extension Limits:
-   - BTC: No longs after >600pt rally without 200pt+ pullback
-   - ETH: No longs after >30pt rally without 10pt+ pullback
-   - Reverse for shorts
+  - BTC: No longs after >600pt rally without 200pt+ pullback
+  - ETH: No longs after >30pt rally without 10pt+ pullback
+  - Reverse for shorts
 4. Time-Based Filters:
-   - No new entries in first 5min after major news/volatility
-   - Exit consideration if position stagnant >30min
+  - No new entries in first 5min after major news/volatility
+  - Exit consideration if position stagnant >30min
 5. Market Structure:
-   - Clear support/resistance levels identified
-   - No entries in choppy/ranging markets without clear levels
-   - Trend alignment on 15m minimum
+  - Clear support/resistance levels identified
+  - No entries in choppy/ranging markets without clear levels
+  - Trend alignment on 15m minimum
 ```
 
 # Position Management Discipline (ENHANCED)
@@ -114,34 +114,33 @@ Valid Entry Conditions (ALL must be met):
 ```yml
 Early Warning Exits (Before Stop Loss):
 1. Volume Exhaustion Exit:
-   - If entered on volume surge but volume drops >80% within 10min → Exit 50%
-   - If no volume support after 15min → Exit remaining
+  - If entered on volume surge but volume drops >80% within 10min → Exit 50%
+  - If no volume support after 15min → Exit remaining
 2. Rejection Exit:
-   - Price rejected from entry level twice → Exit immediately
-   - Failed to break key resistance/support after 2 attempts → Exit
+  - Price rejected from entry level twice → Exit immediately
+  - Failed to break key resistance/support after 2 attempts → Exit
 3. Time-Based Exits:
-   - No profit after 30min → Reduce position by 50%
-   - Negative after 45min → Exit completely
+  - No profit after 30min → Reduce position by 50%
+  - Negative after 45min → Exit completely
 4. Structure Break Exit:
-   - Support broken (for longs) → Exit immediately
-   - Resistance broken (for shorts) → Exit immediately
-   - Don't wait for stop loss if structure clearly broken
+  - Support broken (for longs) → Exit immediately
+  - Resistance broken (for shorts) → Exit immediately
+  - Don't wait for stop loss if structure clearly broken
 
 CRITICAL STOP LOSS MANAGEMENT:
 1. After Opening Position:
-   - MUST see STOP_MARKET order in mcp__binance__get_open_orders
-   - If no stop order visible → Recreate immediately
-   - Document stop order ID in memo
+  - MUST see STOP_MARKET order in mcp__binance__get_open_orders
+  - If no stop order visible → Recreate immediately
+  - Document stop order ID in memo
 2. During Position:
-   - Check stop order exists every 5 minutes
-   - If price within 50pts of stop → Prepare manual close
-   - If price breaches stop level → IMMEDIATE manual close
-3. Stop Loss Verification Checklist:
-   ☐ Set stop order → mcp__binance__set_stop_loss
-   ☐ Verify order exists → mcp__binance__get_open_orders
-   ☐ Note order ID → Document in memo
-   ☐ If missing → Recreate immediately
-   ☐ If breached → Manual close position
+  - Check stop order exists every 5 minutes
+  - If price within 50pts of stop → Prepare manual close
+  - If price breaches stop level → IMMEDIATE manual close
+3. Stop Loss Verification Checklist: ☐ Set stop order → mcp__binance__set_stop_loss
+  ☐ Verify order exists → mcp__binance__get_open_orders
+  ☐ Note order ID → Document in memo
+  ☐ If missing → Recreate immediately
+  ☐ If breached → Manual close position
 ```
 
 # Memo Content Format

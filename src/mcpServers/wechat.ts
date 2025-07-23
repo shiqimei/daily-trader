@@ -76,7 +76,7 @@ const wechatNotifier = new WeChatNotifier()
 
 const server = new Server(
   {
-    name: 'wechat-server',
+    name: 'wechat',
     version: '1.0.0'
   },
   {

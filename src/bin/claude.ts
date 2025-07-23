@@ -73,7 +73,8 @@ async function runClaude() {
         'mcp__tradingSystem__get_trading_system',
         'mcp__tradingSystem__update_trading_system',
         'mcp__tradingSystem__revert_trading_system',
-        'mcp__tradingSystem__get_revision_history'
+        'mcp__tradingSystem__get_revision_history',
+        'mcp__wechat__push_notification'
       ],
       disallowedTools: [
         'Task',

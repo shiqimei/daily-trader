@@ -1,4 +1,4 @@
-import { systemPrompt } from '@/prompts'
+import { tradingSystemPrompt } from '@/prompts'
 import { logger } from '@/utils/logger'
 import { query } from '@anthropic-ai/claude-code'
 import dayjs from 'dayjs'
@@ -34,7 +34,7 @@ async function runClaude() {
     abortController: new AbortController(),
     options: {
       maxTurns: 999,
-      customSystemPrompt: systemPrompt,
+      customSystemPrompt: tradingSystemPrompt,
       allowedTools: [
         'mcp__binance__get_top_symbols',
         'mcp__binance__calculate_position_size',

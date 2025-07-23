@@ -930,7 +930,7 @@ function renderHTML(memos: Memo[]): string {
         // Find the memo card and get the raw content
         const memoCard = document.querySelector(\`[data-memo-id="\${memoId}"]\`);
         const rawContentTextarea = memoCard.querySelector('.memo-raw-content');
-        const content = rawContentTextarea.value;
+        const content = rawContentTextarea.value || rawContentTextarea.textContent;
 
         await navigator.clipboard.writeText(content);
         
@@ -948,7 +948,7 @@ function renderHTML(memos: Memo[]): string {
         // Fallback for older browsers
         const memoCard = document.querySelector(\`[data-memo-id="\${memoId}"]\`);
         const rawContentTextarea = memoCard.querySelector('.memo-raw-content');
-        const content = rawContentTextarea.value;
+        const content = rawContentTextarea.value || rawContentTextarea.textContent;
         
         const textArea = document.createElement('textarea');
         textArea.value = content;

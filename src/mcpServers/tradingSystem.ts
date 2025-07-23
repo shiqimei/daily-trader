@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { db } from '@/database'
-import { initialTradingSystemPrompt } from '@/prompts'
+import { tradingSystemPrompt } from '@/prompts'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
@@ -31,7 +31,7 @@ if (count.count === 0) {
     INSERT INTO trading_systems (created_time, revision, content, revision_notes)
     VALUES (?, ?, ?, ?)
   `)
-  insertStmt.run(new Date().toISOString(), 1, initialTradingSystemPrompt, 'Initial trading system')
+  insertStmt.run(new Date().toISOString(), 1, tradingSystemPrompt, 'Initial trading system')
 }
 
 const tools = [

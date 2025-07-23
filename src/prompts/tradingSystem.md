@@ -44,12 +44,15 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 5. Position Management
     ☐ Entry → Set SL based on market structure, TP1 on 1R  → mcp__binance__set_stop_loss, mcp__binance__set_take_profit
     ☐ 1R → Close 50% position + Move stop loss to breakeven -> mcp__binance__close_position, mcp__binance__set_stop_loss
-    ☐ 2R → Close another 30% (total 80% closed) + Trail stop based on price action -> mcp__binance__close_position, mcp__binance__set_trailing_stop
+    ☐ 2R → Close another 30% (total 80% closed) + Trail stop based on price action -> mcp__binance__close_position
     ☐ Retracement Exit:
       • Position > 50%: Exit if retracement exceeds 70% from high, mcp__binance__close_position
       • Position 20-50%: Exit if retracement exceeds 60% from high, mcp__binance__close_position
       • Position < 20%: Exit if retracement exceeds 50% from high, mcp__binance__close_position
-    !! Create orders if some are missing to ensure our SL/TP well executed
+    ☐ Structure Exit: Close position immediately if market structure breaks → mcp__binance__close_position
+    ☐ Order Management: Verify SL/TP orders exist and recreate if missing → mcp__binance__get_open_orders, mcp__binance__set_stop_loss, mcp__binance__set_take_profit
+    ☐ Breakeven Protection: Set breakeven stop loss if price reached 1R previously and no BE order exists → mcp__binance__set_stop_loss
+    ☐ Fallback Exit: Close position immediately if price reached 1R previously but now showing negative profit → mcp__binance__close_position
 6. Memo Management
     ☐ Add trading memo → mcp__memo__add_memo
 ```

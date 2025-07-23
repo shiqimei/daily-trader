@@ -469,19 +469,6 @@ const binanceTools: Tool[] = [
     }
   },
   {
-    name: 'set_trailing_stop',
-    description: 'Set trailing stop order',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        symbol: { type: 'string', description: 'Trading pair symbol' },
-        activationPrice: { type: 'number', description: 'Price to activate trailing' },
-        callbackRate: { type: 'number', description: 'Callback rate percentage (0.1-5)' }
-      },
-      required: ['symbol', 'activationPrice', 'callbackRate']
-    }
-  },
-  {
     name: 'clear_stops',
     description: 'Cancel all stop orders for a symbol',
     inputSchema: {
@@ -1941,69 +1928,6 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
       }
 
-      case 'set_trailing_stop': {
-        const { symbol, activationPrice, callbackRate } = args as {
-          symbol: string
-          activationPrice: number
-          callbackRate: number
-        }
-        if (callbackRate < 0.1 || callbackRate > 5) {
-          throw new Error('Callback rate must be between 0.1 and 5')
-        }
-
-        const account = await makeRequest(config, '/fapi/v2/account', {}, 'GET', true)
-        const position = account.positions.find(
-          (p: any) => p.symbol === symbol && parseFloat(p.positionAmt) !== 0
-        )
-
-        if (!position) {
-          throw new Error(`No open position found for ${symbol}`)
-        }
-
-        const positionAmt = parseFloat(position.positionAmt)
-        const side = positionAmt > 0 ? 'SELL' : 'BUY'
-
-        const order = await makeRequest(
-          config,
-          '/fapi/v1/order',
-          {
-            symbol,
-            side,
-            quantity: Math.abs(positionAmt),
-            type: 'TRAILING_STOP_MARKET',
-            activationPrice,
-            callbackRate
-          },
-          'POST',
-          true
-        )
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                {
-                  action: 'SET_TRAILING_STOP',
-                  symbol,
-                  activationPrice,
-                  callbackRate,
-                  side,
-                  order: {
-                    orderId: order.orderId,
-                    status: order.status,
-                    activatePrice: order.activationPrice,
-                    priceRate: order.callbackRate,
-                    time: new Date(order.updateTime).toISOString()
-                  }
-                },
-                null,
-                2
-              )
-            }
-          ]
-        }
-      }
 
       case 'clear_stops': {
         const { symbol } = args as { symbol: string }

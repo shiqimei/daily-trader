@@ -28,7 +28,7 @@ interface Memo {
 const memoTools: Tool[] = [
   {
     name: 'add_memo',
-    description: 'Add a trading memo with date and key insights',
+    description: 'Add a trading memo for position entry or exit decisions using 5W framework (what, where, how, why, when)',
     inputSchema: {
       type: 'object',
       properties: {
@@ -38,7 +38,7 @@ const memoTools: Tool[] = [
         },
         content: {
           type: 'string',
-          description: 'Key trading insights to remember'
+          description: 'Entry/exit decision memo using 5W format: WHAT (action taken), WHERE (price/level), HOW (method/setup), WHY (reasoning/signals), WHEN (timing/conditions)'
         }
       },
       required: ['date', 'content']
@@ -130,7 +130,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           content: [
             {
               type: 'text',
-              text: `Memo added successfully:\nID: ${memo.id}\nDate: ${memo.date}\nInsights: ${memo.content}`
+              text: `Position memo added successfully:\nID: ${memo.id}\nDate: ${memo.date}\nDecision: ${memo.content}`
             }
           ]
         }
@@ -166,7 +166,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           content: [
             {
               type: 'text',
-              text: `Trading memo(s):\n\n${memoText}`
+              text: `Position decision memo(s):\n\n${memoText}`
             }
           ]
         }

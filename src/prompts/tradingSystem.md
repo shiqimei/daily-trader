@@ -48,13 +48,15 @@
   • 突破形态→跟随突破方向
 ☐ 在备忘录中明确记录入场逻辑和预期盈亏比
 5. 仓位管理
-☐ 入场 → mcp__binance__open_long 或 mcp__binance__open_short → 基于市场结构设置止损，在1R设置止盈1 → mcp__binance__set_stop_loss, mcp__binance__set_take_profit
+☐ 入场 → mcp__binance__open_long 或 mcp__binance__open_short → 止损设置在市场结构之外（支撑/阻力、前高/前低、关键价位），在1R设置止盈1 → mcp__binance__set_stop_loss, mcp__binance__set_take_profit
 ☐ 1R → 平仓50%仓位 + 移动止损至保本 → mcp__binance__close_position, mcp__binance__set_stop_loss
 ☐ 回撤出场：
 • 仓位 > 50%：如果从高点回撤超过70%则出场，mcp__binance__close_position
 • 仓位 20-50%：如果从高点回撤超过60%则出场，mcp__binance__close_position
 • 仓位 < 20%：如果从高点回撤超过50%则出场，mcp__binance__close_position
-☐ 止损触发：如果价格 > 止损（做空）或 < 止损（做多）→ 立即 mcp__binance__close_position
+☐ 止损触发：只在价格突破市场结构时止损
+  • 做多：价格跌破关键支撑/前低/结构低点 → 立即 mcp__binance__close_position
+  • 做空：价格突破关键阻力/前高/结构高点 → 立即 mcp__binance__close_position
 ☐ 仓位平仓 → 发送微信通知 → mcp__wechat__push_notification
 标题："🔴 仓位已平：[交易对] [多/空]"
 内容："平均平仓价：[avg_close_price] | 交易对：[symbol] | 余额：[current_balance] | 盈亏：[realized_pnl] ([pnl_percentage]%)"
@@ -78,7 +80,10 @@
 - 始终在决策中记录入场理由
 - 始终计算并说明预期盈亏比
 - 始终以价格行动和K线为主要指导
-- 始终基于市场结构设置止损
+- 始终将止损设置在市场结构之外：
+  • 做多止损：设在支撑位下方、前低下方、关键结构低点下方
+  • 做空止损：设在阻力位上方、前高上方、关键结构高点上方
+  • 绝不在结构内部设置止损，避免被假突破扫损
 ```
 
 # 备忘录管理策略
@@ -111,7 +116,7 @@ WHEN: [时间] UTC [持仓时长]
 
 ```yml
 WHAT: 开多(open_long) BTCUSDC 0.248仓位 + 开多(open_long) ETHUSDC 8.019仓位
-WHERE: BTC入场@117295.7|止损@117190|目标@117500 | ETH入场@3725.81|止损@3710|目标@3756
+WHERE: BTC入场@117295.7|止损@117190(设在117200支撑结构下方)|目标@117500 | ETH入场@3725.81|止损@3703(设在3710前低结构下方)|目标@3756
 HOW: 市价开仓 - 基于支撑反弹形态+成交量确认+多时间框架对齐
 WHY: 周末低点支撑测试后同步反弹，BTC守住116572关键支撑，ETH守住3703支撑，5/15分钟显示看涨动量，成交量增加确认，2:1盈亏比设置
 WHEN: 2024-01-15 14:23:45 UTC 反弹形态确认且突破短期阻力时
@@ -128,9 +133,9 @@ WHEN: 2024-01-15 15:45:12 UTC 持仓1小时22分钟
 结果: 盈利+25.54 USDC (+1.02R) 当前胜率75%
 
 WHAT: 平仓 ETHUSDC 多头 全部仓位 (止损触发)
-WHERE: 平仓@3710|原入场@3725.81|止损@3710
-HOW: 止损单触发 - 跌破支撑水平
-WHY: 价格跌破关键支撑3710，风险控制优先，避免更大亏损
+WHERE: 平仓@3703|原入场@3725.81|止损@3703(设在3710支撑结构下方)
+HOW: 止损单触发 - 跌破市场结构
+WHY: 价格跌破3710关键支撑结构，确认趋势改变，按计划止损
 WHEN: 2024-01-15 16:15:33 UTC 持仓1小时52分钟
 结果: 亏损-15.81 USDC (-1.0R) 当前胜率74%
 ```

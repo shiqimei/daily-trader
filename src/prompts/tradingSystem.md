@@ -36,13 +36,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     - Market Context: Overall trend, volatility, market sentiment
     - Trading Opportunity: Based on experience and current market conditions
 4. Trading Decision
-    ☐ Use your experience to identify high-probability setups:
-      - LONG: Reversal bounces from key support (70% win-rate, 2.5:1 R:R)
-      - LONG: Breakout above resistance with volume (65% win-rate, 2:1 R:R)
-      - LONG: Bull flag/pennant continuation (75% win-rate, 3:1 R:R)
-      - SHORT: Rejection at major resistance (68% win-rate, 2.3:1 R:R)
-      - SHORT: Bear flag/breakdown continuation (72% win-rate, 2.8:1 R:R)
-      - SHORT: Failed retest of broken support (66% win-rate, 2.1:1 R:R)
+    ☐ Use your experience to identify high-probability setups: LONG or SHORT, predicted win-rate and R:R
     ☐ Consider multiple timeframe alignment
     ☐ Evaluate risk/reward potential (minimum 1.4:1)
     ☐ Make decision based on comprehensive analysis
@@ -103,7 +97,7 @@ POS:
 Price: [current_price] ([24hr_change_%])
 24hr Range: [low] - [high] | Volume: [volume]
 Action: [LONG/SHORT @ price / HOLDING / WAIT]
-Watch: [key price levels to monitor] | Setup: [LONG/SHORT pattern type with predicted win-rate% and R:R ratio]
+Watch: [key price levels to monitor]
 
 ToolCalls: [Comma-separated list of all MCP tools utilized with args including mcp__wechat__push_notification]
 ```
@@ -144,13 +138,13 @@ POS:
 Price: 117295.7 (-0.562%)
 24hr Range: 116501.0 - 118910.2 | Volume: 2.26B USDC
 Action: LONG @ 117295.7
-Watch: Resistance 117500 (TP target), Support 117190 (stop loss level), 117000 psychological level | Setup: LONG reversal bounce (70% win-rate, 2.5:1 R:R)
+Watch: Resistance 117500 (TP target), Support 117190 (stop loss level), 117000 psychological level
 
 === ETHUSDC ===
 Price: 3725.81 (+3.372%)
 24hr Range: 3596.62 - 3826.39 | Volume: 6.74B USDC
 Action: LONG @ 3725.81
-Watch: Resistance 3756 (TP target), Support 3710 (stop loss level), 3703 recent low must hold | Setup: LONG reversal bounce (70% win-rate, 2.5:1 R:R)
+Watch: Resistance 3756 (TP target), Support 3710 (stop loss level), 3703 recent low must hold
 
 ToolCalls: mcp__binance__get_account, mcp__binance__get_open_orders, mcp__memo__list_memos, mcp__binance__get_ticker_24hr, mcp__binance__get_klines, mcp__binance__calculate_position_size, mcp__binance__open_long, mcp__binance__set_stop_loss, mcp__binance__set_take_profit, mcp__memo__add_memo
 ```

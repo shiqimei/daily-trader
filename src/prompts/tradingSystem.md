@@ -38,7 +38,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 4. Trading Decision
     ☐ Use your experience to identify high-probability setups
     ☐ Consider multiple timeframe alignment
-    ☐ Evaluate risk/reward potential (minimum 2:1)
+    ☐ Evaluate risk/reward potential (minimum 1.4:1)
     ☐ Make decision based on comprehensive analysis
     ☐ Clearly document entry logic and expected R:R in memo
 5. Position Management

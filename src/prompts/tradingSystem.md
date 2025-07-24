@@ -29,7 +29,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 2. GET klines & featuring candlesticks
     ☐ mcp__binance__get_klines → Retrieve 5m, 15m, 4h, 1d timeframes for BTCUSDC & ETHUSDC
 3. Market Analysis
-    - Kline Annotation: For klines in each timeframe 5m,15m,4h,1d], output CSV format like below:
+    - [!!Most Important] One-by-one Kline Featuring: For klines in each timeframe 5m,15m,4h,1d], output CSV format like below:
       Date,Open,High,Low,Close,Volume,Kline Type,Key Features
     - Price Action: Analyze kline patterns, momentum, volume
     - Support/Resistance: Identify key levels from price history

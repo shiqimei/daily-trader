@@ -8,6 +8,7 @@ import {
 } from '@modelcontextprotocol/sdk/types'
 import crypto from 'crypto'
 import dotenv from 'dotenv'
+import { compressKlinesToCsv, type OriginalKlinesResponse } from '../utils/klineCompression'
 
 dotenv.config()
 
@@ -653,32 +654,32 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         } = args as { symbol: string; interval: Interval; limit?: number }
         const klines = await makeRequest(config, '/fapi/v1/klines', { symbol, interval, limit })
 
+        const originalFormat: OriginalKlinesResponse = {
+          symbol,
+          interval,
+          count: klines.length,
+          klines: klines.map((k: any[]) => ({
+            openTime: new Date(k[0]).toISOString(),
+            open: k[1],
+            high: k[2],
+            low: k[3],
+            close: k[4],
+            volume: k[5],
+            closeTime: new Date(k[6]).toISOString(),
+            quoteVolume: k[7],
+            trades: k[8],
+            takerBuyBaseVolume: k[9],
+            takerBuyQuoteVolume: k[10]
+          }))
+        }
+
+        const csvCompressed = compressKlinesToCsv(originalFormat)
+
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(
-                {
-                  symbol,
-                  interval,
-                  count: klines.length,
-                  klines: klines.map((k: any[]) => ({
-                    openTime: new Date(k[0]).toISOString(),
-                    open: k[1],
-                    high: k[2],
-                    low: k[3],
-                    close: k[4],
-                    volume: k[5],
-                    closeTime: new Date(k[6]).toISOString(),
-                    quoteVolume: k[7],
-                    trades: k[8],
-                    takerBuyBaseVolume: k[9],
-                    takerBuyQuoteVolume: k[10]
-                  }))
-                },
-                null,
-                2
-              )
+              text: csvCompressed
             }
           ]
         }
@@ -691,14 +692,27 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
         for (const interval of intervals) {
           const klines = await makeRequest(config, '/fapi/v1/klines', { symbol, interval, limit })
-          results[interval] = klines.map((k: any[]) => ({
-            time: new Date(k[0]).toISOString(),
-            open: k[1],
-            high: k[2],
-            low: k[3],
-            close: k[4],
-            volume: k[5]
-          }))
+          // Compress each interval's klines
+          const originalFormat: OriginalKlinesResponse = {
+            symbol,
+            interval,
+            count: klines.length,
+            klines: klines.map((k: any[]) => ({
+              openTime: new Date(k[0]).toISOString(),
+              open: k[1],
+              high: k[2],
+              low: k[3],
+              close: k[4],
+              volume: k[5],
+              closeTime: new Date(k[6]).toISOString(),
+              quoteVolume: k[7],
+              trades: k[8],
+              takerBuyBaseVolume: k[9],
+              takerBuyQuoteVolume: k[10]
+            }))
+          }
+          const csvCompressed = compressKlinesToCsv(originalFormat)
+          results[interval] = csvCompressed.d // Just store the CSV data string
         }
 
         return {
@@ -707,8 +721,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               type: 'text',
               text: JSON.stringify(
                 {
-                  symbol,
-                  intervals: results
+                  s: symbol,
+                  i: results
                 },
                 null,
                 2
@@ -835,30 +849,24 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                 limit: 10
               })
 
-              // Format klines data: [open_time, open, high, low, close, volume, close_time, quote_volume, count, taker_buy_volume, taker_buy_quote_volume, ignore]
-              const formattedKlines = klines.map((kline: any[]) => ({
-                openTime: parseInt(kline[0]),
-                open: parseFloat(kline[1]),
-                high: parseFloat(kline[2]),
-                low: parseFloat(kline[3]),
-                close: parseFloat(kline[4]),
-                volume: parseFloat(kline[5]),
-                closeTime: parseInt(kline[6]),
-                quoteVolume: parseFloat(kline[7]),
-                trades: parseInt(kline[8]),
-                takerBuyVolume: parseFloat(kline[9]),
-                takerBuyQuoteVolume: parseFloat(kline[10])
-              }))
+              // Convert to CSV format for maximum compression
+              const csvLines = klines
+                .map((kline: any[]) => {
+                  const date = new Date(parseInt(kline[0]))
+                  const dateStr = date.toISOString().slice(0, 16).replace('T', ' ')
+                  return `${dateStr},${kline[1]},${kline[4]},${kline[2]},${kline[3]},${kline[5]}`
+                })
+                .join('\n')
 
               return {
                 ...pair,
-                klines4h: formattedKlines
+                k4h: csvLines
               }
             } catch (error) {
               console.error(`Failed to fetch klines for ${pair.symbol}:`, error)
               return {
                 ...pair,
-                klines4h: []
+                k4h: ''
               }
             }
           })

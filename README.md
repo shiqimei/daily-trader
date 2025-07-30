@@ -25,11 +25,8 @@ A comprehensive algorithmic trading system for Binance futures with multiple str
 
 3. **Run strategies**:
    ```bash
-   # Liquidity Scalping (Live)
+   # Liquidity Scalping
    npm run liquidity-scalping
-   
-   # Liquidity Scalping (Dry Run)
-   npm run liquidity-scalping -- --dry-run
    
    # Orderbook TUI
    npm run orderbook-tui

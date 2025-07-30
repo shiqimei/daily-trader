@@ -344,9 +344,41 @@ class LiquidityScalpingStrategy {
       }
       
       console.log(chalk.green(`✓ Placed ${signal.side} marker order at ${signal.price}`))
+      
+      // Start monitoring for fill
+      this.monitorOrderFill()
     } catch (error) {
       console.error(chalk.red('Failed to place marker order:'), error)
     }
+  }
+  
+  private async monitorOrderFill() {
+    if (!this.markerOrder) return
+    
+    const checkInterval = setInterval(async () => {
+      try {
+        const result = await this.mcpClient!.callTool({
+          name: 'get_order',
+          arguments: {
+            symbol: this.markerOrder!.symbol,
+            order_id: this.markerOrder!.orderId
+          }
+        })
+        
+        const order = JSON.parse((result.content as any)[0].text)
+        
+        if (order.status === 'FILLED') {
+          clearInterval(checkInterval)
+          await this.onOrderFilled()
+        } else if (order.status === 'CANCELED' || order.status === 'EXPIRED') {
+          clearInterval(checkInterval)
+          this.markerOrder = null
+          console.log(chalk.yellow(`Marker order ${order.status.toLowerCase()}`))
+        }
+      } catch (error) {
+        // Continue monitoring
+      }
+    }, 1000) // Check every second
   }
 
   private async cancelMarkerOrder() {

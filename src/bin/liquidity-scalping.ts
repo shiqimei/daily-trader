@@ -35,7 +35,7 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio'
-import { BinanceOrderbookWS } from '../websocket/BinanceOrderbookWS'
+import { BinanceOrderbookWSSimple } from '../websocket/BinanceOrderbookWSSimple'
 import { OrderbookDynamics } from '../analysis/OrderbookDynamics'
 import { DynamicPattern, OrderbookSnapshot, TradingConfig } from '../types/orderbook'
 import chalk from 'chalk'
@@ -87,7 +87,7 @@ interface MarketData {
 class LiquidityScalpingStrategy {
   private state: State = 'INITIALIZING'
   private mcpClient: Client | null = null
-  private websocket: BinanceOrderbookWS | null = null
+  private websocket: BinanceOrderbookWSSimple | null = null
   private orderbookDynamics: OrderbookDynamics | null = null
   private position: Position | null = null
   private markerOrder: MarkerOrder | null = null
@@ -248,7 +248,7 @@ class LiquidityScalpingStrategy {
     this.orderbookDynamics = new OrderbookDynamics(config)
     
     // Create websocket with callback
-    this.websocket = new BinanceOrderbookWS(
+    this.websocket = new BinanceOrderbookWSSimple(
       this.currentMarket!.symbol,
       (snapshot: OrderbookSnapshot) => {
         this.orderbookDynamics!.update(snapshot)

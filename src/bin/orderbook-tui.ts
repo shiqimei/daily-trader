@@ -1,7 +1,7 @@
 #!/usr/bin/env -S npx tsx
 import { Command } from 'commander';
 import blessed from 'blessed';
-import { BinanceOrderbookWS } from '../websocket/BinanceOrderbookWS';
+import { BinanceOrderbookWSSimple } from '../websocket/BinanceOrderbookWSSimple';
 import { OrderbookDynamics } from '../analysis/OrderbookDynamics';
 import { CircularBuffer } from '../utils/CircularBuffer';
 import { 
@@ -505,7 +505,7 @@ program
       let latestMarketState: MarketState | null = null;
 
       // Connect to WebSocket
-      const ws = new BinanceOrderbookWS(
+      const ws = new BinanceOrderbookWSSimple(
         symbol,
         (snapshot) => {
           const now = Date.now();
@@ -560,10 +560,7 @@ program
           }
         },
         parseInt(options.depth),
-        parseInt(options.updateSpeed),
-        (status) => {
-          tui.setWsStatus(status);
-        }
+        parseInt(options.updateSpeed)
       );
 
       // Display update loop - runs independently at higher frequency

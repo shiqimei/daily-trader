@@ -8,7 +8,7 @@
     "serve-dashboard": "npx tsx src/bin/serve-dashboard.ts",
     "trading-system": "npx tsx src/mcpServers/tradingSystem.ts",
     "trading-system-cli": "npx tsx src/bin/trading-system-cli.ts",
-    "orderbook": "npx tsx src/bin/orderbook.ts",
+    "orderflow": "npx tsx src/bin/orderflow.ts",
     "liquidity-scalping": "npx tsx src/bin/liquidity-scalping.ts",
     "inspect": "npx @modelcontextprotocol/inspector@latest"
   },

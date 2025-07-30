@@ -197,4 +197,12 @@ export class BinanceWebsocket {
       this.ws = null
     }
   }
+  
+  getOrderbook(): OrderbookSnapshot {
+    return {
+      timestamp: this.orderbook.timestamp,
+      bids: this.orderbook.bids.map(bid => ({ ...bid })),
+      asks: this.orderbook.asks.map(ask => ({ ...ask }))
+    }
+  }
 }

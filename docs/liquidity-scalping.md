@@ -45,18 +45,11 @@ The liquidity scalping strategy is an automated trading system that identifies a
 
 ## Usage
 
-### Live Trading
 ```bash
 npm run liquidity-scalping
 ```
 
-### Dry Run Mode (Simulation)
-```bash
-npm run liquidity-scalping -- --dry-run
-```
-
 ### Command Line Options
-- `-d, --dry-run`: Run in simulation mode without placing real orders
 - `-v, --verbose`: Enable detailed logging
 - `-h, --help`: Display help information
 

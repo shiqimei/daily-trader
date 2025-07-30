@@ -98,12 +98,12 @@ class LiquidityScalpingStrategy {
   private positionStartTime: number = 0
   private exitTimeouts: NodeJS.Timeout[] = []
 
-  constructor(private readonly isDryRun: boolean = false) {}
+  constructor() {}
 
   async start() {
     try {
       console.log(chalk.cyan('=== Liquidity Scalping Strategy v0.2.0 ==='))
-      console.log(chalk.yellow(`Mode: ${this.isDryRun ? 'DRY RUN' : 'LIVE TRADING'}`))
+      console.log(chalk.yellow('Mode: LIVE TRADING'))
       
       await this.initializeMCPClient()
       await this.getAccountInfo()
@@ -320,21 +320,6 @@ class LiquidityScalpingStrategy {
   private async placeMarkerOrder(signal: { side: 'BUY' | 'SELL', price: number }) {
     const positionSize = this.calculatePositionSize()
     
-    if (this.isDryRun) {
-      console.log(chalk.yellow(`[DRY RUN] Would place ${signal.side} marker order at ${signal.price} for ${positionSize} contracts`))
-      this.markerOrder = {
-        orderId: `DRY-${Date.now()}`,
-        symbol: this.currentMarket!.symbol,
-        side: signal.side,
-        price: signal.price,
-        size: positionSize,
-        timeInForce: 'GTX'
-      }
-      // Simulate fill after 1-5 seconds
-      setTimeout(() => this.onOrderFilled(), Math.random() * 4000 + 1000)
-      return
-    }
-    
     try {
       const result = await this.mcpClient!.callTool({
         name: 'place_order',
@@ -366,12 +351,6 @@ class LiquidityScalpingStrategy {
 
   private async cancelMarkerOrder() {
     if (!this.markerOrder) return
-    
-    if (this.isDryRun) {
-      console.log(chalk.yellow(`[DRY RUN] Would cancel marker order ${this.markerOrder.orderId}`))
-      this.markerOrder = null
-      return
-    }
     
     try {
       await this.mcpClient!.callTool({
@@ -422,12 +401,7 @@ class LiquidityScalpingStrategy {
   }
 
   private async placeTPSLOrders() {
-    if (!this.position || this.isDryRun) {
-      if (this.isDryRun) {
-        console.log(chalk.yellow(`[DRY RUN] Would place TP at ${this.position!.tpPrice} and SL at ${this.position!.slPrice}`))
-      }
-      return
-    }
+    if (!this.position) return
     
     try {
       // Place TP order (maker)
@@ -517,13 +491,28 @@ class LiquidityScalpingStrategy {
       await this.exitPosition(1.0)
     }
     
-    // Check if position closed
-    if (this.isDryRun && Math.random() < 0.01) {
-      // Simulate position close
-      console.log(chalk.green(`\n[DRY RUN] Position closed at ${this.currentMarket!.price}`))
-      this.position = null
-      this.clearExitTimers()
-      this.state = 'ENTRY_HUNTING'
+  }
+  
+  private async checkPositionStatus() {
+    // Check if position exists by querying open positions
+    try {
+      const result = await this.mcpClient!.callTool({
+        name: 'get_positions',
+        arguments: {}
+      })
+      
+      const positions = JSON.parse((result.content as any)[0].text)
+      const currentPosition = positions.find((p: any) => p.symbol === this.position?.symbol)
+      
+      if (!currentPosition || currentPosition.positionAmt === 0) {
+        // Position closed
+        console.log(chalk.green(`\n✓ Position closed`))
+        this.position = null
+        this.clearExitTimers()
+        this.state = 'ENTRY_HUNTING'
+      }
+    } catch (error) {
+      // Ignore errors in position checking
     }
   }
 
@@ -544,12 +533,6 @@ class LiquidityScalpingStrategy {
     const newSL = this.position.side === 'LONG'
       ? this.position.entryPrice + this.currentMarket!.tickSize
       : this.position.entryPrice - this.currentMarket!.tickSize
-    
-    if (this.isDryRun) {
-      console.log(chalk.yellow(`[DRY RUN] Would move SL to breakeven at ${newSL}`))
-      this.position.breakEvenMoved = true
-      return
-    }
     
     try {
       // Cancel old SL
@@ -592,16 +575,6 @@ class LiquidityScalpingStrategy {
     
     const exitSize = Math.floor(this.position.size * percent)
     if (exitSize === 0) return
-    
-    if (this.isDryRun) {
-      console.log(chalk.yellow(`[DRY RUN] Would exit ${exitSize} contracts at market`))
-      if (percent >= 1.0) {
-        this.position = null
-        this.clearExitTimers()
-        this.state = 'ENTRY_HUNTING'
-      }
-      return
-    }
     
     try {
       await this.mcpClient!.callTool({
@@ -675,10 +648,9 @@ const program = new Command()
   .name('liquidity-scalping')
   .description('Liquidity scalping strategy for Binance futures')
   .version('0.2.0')
-  .option('-d, --dry-run', 'Run in simulation mode', false)
   .option('-v, --verbose', 'Enable verbose logging', false)
   .action(async (options) => {
-    const strategy = new LiquidityScalpingStrategy(options.dryRun)
+    const strategy = new LiquidityScalpingStrategy()
     
     // Handle graceful shutdown
     process.on('SIGINT', async () => {

@@ -680,8 +680,8 @@ class LiquidityScalpingStrategy {
         this.websocket = null
       }
       
+      // Clear orderbook dynamics
       if (this.orderbookDynamics) {
-        this.orderbookDynamics.reset()
         this.orderbookDynamics = null
       }
       

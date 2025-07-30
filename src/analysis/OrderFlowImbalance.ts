@@ -237,11 +237,11 @@ export class OrderFlowImbalance {
       ? spreads.reduce((sum, s) => sum + s, 0) / spreads.length 
       : this.avgSpread
     
-    // Check conditions
-    const normalSpread = currentSpread >= 0.5 * avgSpread && currentSpread <= 2 * avgSpread
-    const sufficientLiquidity = orderbook.bids.length >= 5 && orderbook.asks.length >= 5
-    const stableMarket = spreads.length >= 20 
-      ? Math.sqrt(spreads.reduce((sum, s) => sum + Math.pow(s - avgSpread, 2), 0) / spreads.length) < 2 * this.tickSize
+    // More relaxed conditions for aggressive market making
+    const normalSpread = currentSpread >= 0.3 * avgSpread && currentSpread <= 3 * avgSpread
+    const sufficientLiquidity = orderbook.bids.length >= 3 && orderbook.asks.length >= 3
+    const stableMarket = spreads.length >= 10 
+      ? Math.sqrt(spreads.reduce((sum, s) => sum + Math.pow(s - avgSpread, 2), 0) / spreads.length) < 5 * this.tickSize
       : true
     
     return normalSpread && sufficientLiquidity && stableMarket
@@ -297,8 +297,8 @@ export class OrderFlowImbalance {
     const midPrice = (orderbook.bids[0].price + orderbook.asks[0].price) / 2
     const currentSpread = orderbook.asks[0].price - orderbook.bids[0].price
     
-    // 1. CANCEL CONDITIONS - Risk management first
-    if (flowToxicity > 0.6) {
+    // 1. CANCEL CONDITIONS - Risk management first (more relaxed)
+    if (flowToxicity > 0.8) {  // Increased from 0.6
       return { 
         type: 'CANCEL', 
         reason: 'High flow toxicity - informed traders detected',
@@ -306,7 +306,7 @@ export class OrderFlowImbalance {
       }
     }
     
-    if (Math.abs(microstructureFlowImbalance) > 0.8) {
+    if (Math.abs(microstructureFlowImbalance) > 0.9) {  // Increased from 0.8
       return { 
         type: 'CANCEL', 
         reason: 'Extreme MFI - one-sided sweep in progress',
@@ -314,22 +314,22 @@ export class OrderFlowImbalance {
       }
     }
     
-    // 2. SETUP CONDITIONS - Look for opportunities
+    // 2. SETUP CONDITIONS - More aggressive thresholds
     // High PII indicates incoming large orders - set up on opposite side
-    if (Math.abs(priceImpactImbalance) > 0.7) {
+    if (Math.abs(priceImpactImbalance) > 0.4) {  // Lowered from 0.7
       let askOffset = this.tickSize
       let bidOffset = this.tickSize
       
-      if (priceImpactImbalance > 0.7) {
+      if (priceImpactImbalance > 0.4) {
         // Heavy buy pressure in book - large sells coming
         // Place ask closer to catch the sells
         askOffset = this.tickSize
-        bidOffset = this.tickSize * 3  // Wider bid to avoid getting hit
-      } else if (priceImpactImbalance < -0.7) {
+        bidOffset = this.tickSize * 2  // Reduced from 3x
+      } else if (priceImpactImbalance < -0.4) {
         // Heavy sell pressure in book - large buys coming  
         // Place bid closer to catch the buys
         bidOffset = this.tickSize
-        askOffset = this.tickSize * 3  // Wider ask to avoid getting hit
+        askOffset = this.tickSize * 2  // Reduced from 3x
       }
       
       return {
@@ -342,18 +342,18 @@ export class OrderFlowImbalance {
     }
     
     // OBP imbalance - one side is vulnerable
-    if (Math.abs(orderbookPressure) > 0.5) {
-      let askOffset = this.tickSize * 2
-      let bidOffset = this.tickSize * 2
+    if (Math.abs(orderbookPressure) > 0.3) {  // Lowered from 0.5
+      let askOffset = this.tickSize * 1.5  // Reduced from 2x
+      let bidOffset = this.tickSize * 1.5
       
-      if (orderbookPressure > 0.5) {
+      if (orderbookPressure > 0.3) {
         // Bid side stronger - asks are vulnerable
         askOffset = this.tickSize  // Tighter ask to catch sweep
-        bidOffset = this.tickSize * 3
+        bidOffset = this.tickSize * 2  // Reduced from 3x
       } else {
         // Ask side stronger - bids are vulnerable
         bidOffset = this.tickSize  // Tighter bid to catch sweep
-        askOffset = this.tickSize * 3
+        askOffset = this.tickSize * 2  // Reduced from 3x
       }
       
       return {
@@ -365,10 +365,10 @@ export class OrderFlowImbalance {
       }
     }
     
-    // 3. NORMAL MARKET MAKING - Balanced conditions
-    if (flowToxicity < 0.3 && Math.abs(microstructureFlowImbalance) < 0.3) {
-      // Safe to make markets with normal spreads
-      const normalOffset = Math.max(this.tickSize * 2, currentSpread * 0.3)
+    // 3. NORMAL MARKET MAKING - More relaxed conditions
+    if (flowToxicity < 0.5 && Math.abs(microstructureFlowImbalance) < 0.5) {  // Increased from 0.3
+      // Safe to make markets with tighter spreads
+      const normalOffset = Math.max(this.tickSize, currentSpread * 0.25)  // Tighter spreads
       
       return {
         type: 'SETUP',
@@ -379,7 +379,21 @@ export class OrderFlowImbalance {
       }
     }
     
-    // Default: No signal
+    // 4. AGGRESSIVE CATCH-ALL - Always try to make markets unless risky
+    if (flowToxicity < 0.7) {  // New condition
+      // Even more aggressive in quiet markets
+      const aggressiveOffset = this.tickSize * 1.5
+      
+      return {
+        type: 'SETUP',
+        askPrice: midPrice + aggressiveOffset,
+        bidPrice: midPrice - aggressiveOffset,
+        reason: 'Aggressive market making',
+        metrics
+      }
+    }
+    
+    // Default: No signal only in extreme conditions
     return { type: null, metrics }
   }
   

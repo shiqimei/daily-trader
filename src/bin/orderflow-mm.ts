@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import * as blessed from 'blessed';
+import blessed from 'blessed';
 import { BinanceWebsocket } from '../websocket/BinanceWebsocket';
 import { OrderFlowImbalance } from '../analysis/OrderFlowImbalance';
 import { CircularBuffer } from '../utils/CircularBuffer';
@@ -109,7 +109,7 @@ class OrderFlowMMTUI {
   private autoScrollLogs: boolean = true; // Auto-scroll enabled by default
   private isProcessingSignal: boolean = false; // Prevent concurrent signal processing
   private lastSignalTime: number = 0; // Track last signal time
-  private signalCooldownMs: number = 1000; // Minimum time between signals
+  private signalCooldownMs: number = 500; // Reduced from 1000ms for more aggressive trading
   
   public log(message: string, type: 'info' | 'warn' | 'error' | 'success' = 'info') {
     const timestamp = new Date().toLocaleTimeString();

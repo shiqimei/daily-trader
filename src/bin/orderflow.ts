@@ -18,6 +18,8 @@ interface ImbalanceHistory {
   flowToxicity: number;
   flowDirection: number;
   signalType: 'SETUP' | 'CANCEL' | 'ADJUST' | null;
+  askPrice?: number;
+  bidPrice?: number;
 }
 
 class OrderFlowTUI {
@@ -425,7 +427,14 @@ class OrderFlowTUI {
       signals.forEach(s => {
         const time = new Date(s.timestamp).toLocaleTimeString();
         const color = s.signalType === 'SETUP' ? 'green' : s.signalType === 'CANCEL' ? 'red' : 'yellow';
-        lines.push(`${time} - {${color}-fg}${s.signalType}{/${color}-fg}`);
+        let signalText = `${time} - {${color}-fg}${s.signalType}{/${color}-fg}`;
+        
+        // Add prices for SETUP signals
+        if (s.signalType === 'SETUP' && s.bidPrice && s.askPrice) {
+          signalText += ` B:${s.bidPrice.toFixed(this.pricePrecision)} A:${s.askPrice.toFixed(this.pricePrecision)}`;
+        }
+        
+        lines.push(signalText);
       });
     }
     
@@ -480,7 +489,9 @@ class OrderFlowTUI {
           microstructureFlowImbalance: signal.metrics.microstructureFlowImbalance,
           flowToxicity: signal.metrics.flowToxicity,
           flowDirection: signal.metrics.flowDirection,
-          signalType: signal.type
+          signalType: signal.type,
+          askPrice: signal.askPrice,
+          bidPrice: signal.bidPrice
         });
       }
       

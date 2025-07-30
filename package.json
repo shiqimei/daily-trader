@@ -9,6 +9,7 @@
     "trading-system": "npx tsx src/mcpServers/tradingSystem.ts",
     "trading-system-cli": "npx tsx src/bin/trading-system-cli.ts",
     "orderflow": "npx tsx src/bin/orderflow.ts",
+    "orderflow-mm": "npx tsx src/bin/orderflow-mm.ts",
     "liquidity-scalping": "npx tsx src/bin/liquidity-scalping.ts",
     "inspect": "npx @modelcontextprotocol/inspector@latest"
   },

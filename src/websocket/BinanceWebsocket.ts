@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws'
-import { OrderbookSnapshot, OrderLevel } from '../types/orderbook'
+import { OrderbookSnapshot } from '../types/orderbook'
 
 interface BinanceDepthUpdate {
   e: string // Event type
@@ -21,7 +21,7 @@ export class BinanceWebsocket {
   private reconnectAttempts: number = 0
   private maxReconnectAttempts: number = 5
   private reconnectDelay: number = 1000
-  
+
   // Trade callback
   public onTrade?: (trade: {
     price: number
@@ -61,7 +61,7 @@ export class BinanceWebsocket {
     this.ws.on('message', (data: Buffer) => {
       try {
         const message = JSON.parse(data.toString())
-        
+
         // Multi-stream format has data field
         if (message.stream && message.data) {
           if (message.stream.includes('@depth')) {
@@ -173,13 +173,15 @@ export class BinanceWebsocket {
     this.reconnectAttempts++
     const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1)
 
-    console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+    console.log(
+      `Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`
+    )
 
     setTimeout(() => {
       this.connectWebSocket()
     }, delay)
   }
-  
+
   private processTrade(trade: any): void {
     if (this.onTrade) {
       this.onTrade({
@@ -197,7 +199,7 @@ export class BinanceWebsocket {
       this.ws = null
     }
   }
-  
+
   getOrderbook(): OrderbookSnapshot {
     return {
       timestamp: this.orderbook.timestamp,

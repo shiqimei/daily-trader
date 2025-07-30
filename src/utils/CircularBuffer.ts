@@ -52,4 +52,8 @@ export class CircularBuffer<T> {
     this.head = 0;
     this.count = 0;
   }
+  
+  getAll(): T[] {
+    return this.toArray();
+  }
 }

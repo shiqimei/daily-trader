@@ -55,7 +55,7 @@ export class OrderFlowImbalance {
     
     for (const ask of asks) {
       if (remaining <= 0) break
-      const executed = Math.min(remaining, ask.volume)
+      const executed = Math.min(remaining, ask.size)
       buyCost += executed * ask.price
       buyVolume += executed
       remaining -= executed
@@ -70,7 +70,7 @@ export class OrderFlowImbalance {
     
     for (const bid of bids) {
       if (remaining <= 0) break
-      const executed = Math.min(remaining, bid.volume)
+      const executed = Math.min(remaining, bid.size)
       sellRevenue += executed * bid.price
       sellVolume += executed
       remaining -= executed
@@ -99,9 +99,9 @@ export class OrderFlowImbalance {
     
     // Weight by inverse distance from best price
     const bidResistance = bids.reduce((sum, level, i) => 
-      sum + level.volume / (1 + i), 0)
+      sum + level.size / (1 + i), 0)
     const askResistance = asks.reduce((sum, level, i) => 
-      sum + level.volume / (1 + i), 0)
+      sum + level.size / (1 + i), 0)
     
     // Normalize
     if (bidResistance + askResistance > 0) {
@@ -154,31 +154,48 @@ export class OrderFlowImbalance {
     orderbook: OrderbookSnapshot, 
     trades: Trade[]
   ): number {
-    const recentWindow = 20
+    const recentWindow = 50  // Increased window for more stable calculation
     const recentTrades = trades.slice(-recentWindow)
     
-    if (recentTrades.length < 2) return 0
+    // Return 0 if not enough trades
+    if (recentTrades.length < 2) {
+      return 0
+    }
     
-    const timeSpan = recentTrades[recentTrades.length - 1].timestamp - recentTrades[0].timestamp
-    if (timeSpan <= 0) return 0
+    // Calculate buy and sell volumes
+    let buyVolume = 0
+    let sellVolume = 0
     
-    // Calculate consumption rates
-    const buyRate = recentTrades
-      .filter(t => t.side === 'BUY')
-      .reduce((sum, t) => sum + t.quantity, 0) / timeSpan
-      
-    const sellRate = recentTrades
-      .filter(t => t.side === 'SELL')
-      .reduce((sum, t) => sum + t.quantity, 0) / timeSpan
+    for (const trade of recentTrades) {
+      if (trade.side === 'BUY') {
+        buyVolume += trade.quantity
+      } else {
+        sellVolume += trade.quantity
+      }
+    }
     
-    // Estimate time to deplete first level
-    const askDepletionTime = buyRate > 0 ? orderbook.asks[0].volume / buyRate : Infinity
-    const bidDepletionTime = sellRate > 0 ? orderbook.bids[0].volume / sellRate : Infinity
+    // Calculate time span in seconds (not milliseconds)
+    const timeSpanSeconds = (recentTrades[recentTrades.length - 1].timestamp - recentTrades[0].timestamp) / 1000
+    if (timeSpanSeconds <= 0) return 0
     
-    // Convert to pressure (inverse of time, bounded)
-    const upwardPressure = 1 / (1 + askDepletionTime)
-    const downwardPressure = 1 / (1 + bidDepletionTime)
+    // Calculate consumption rates per second
+    const buyRatePerSecond = buyVolume / timeSpanSeconds
+    const sellRatePerSecond = sellVolume / timeSpanSeconds
     
+    // Get orderbook liquidity at best levels
+    const askLiquidity = orderbook.asks[0].size
+    const bidLiquidity = orderbook.bids[0].size
+    
+    // Calculate depletion times in seconds
+    const askDepletionTime = buyRatePerSecond > 0 ? askLiquidity / buyRatePerSecond : 1000
+    const bidDepletionTime = sellRatePerSecond > 0 ? bidLiquidity / sellRatePerSecond : 1000
+    
+    // Calculate relative pressure (normalized between -1 and 1)
+    // Faster depletion = higher pressure
+    const upwardPressure = Math.min(10 / askDepletionTime, 1)  // Normalized with 10 second baseline
+    const downwardPressure = Math.min(10 / bidDepletionTime, 1)
+    
+    // Return the imbalance
     return upwardPressure - downwardPressure
   }
   
@@ -192,14 +209,14 @@ export class OrderFlowImbalance {
     
     // Check for abnormally large orders in first 5 levels
     for (let i = 0; i < Math.min(5, orderbook.bids.length); i++) {
-      if (orderbook.bids[i].volume > 5 * historicalAvgSize) {
+      if (orderbook.bids[i].size > 5 * historicalAvgSize) {
         fakeBidWall = true
         break
       }
     }
     
     for (let i = 0; i < Math.min(5, orderbook.asks.length); i++) {
-      if (orderbook.asks[i].volume > 5 * historicalAvgSize) {
+      if (orderbook.asks[i].size > 5 * historicalAvgSize) {
         fakeAskWall = true
         break
       }
@@ -232,6 +249,11 @@ export class OrderFlowImbalance {
    * Update with new orderbook and generate entry signal
    */
   update(orderbook: OrderbookSnapshot, newTrades: Trade[] = []): EntrySignal {
+    // Check if orderbook is valid
+    if (!orderbook.bids.length || !orderbook.asks.length) {
+      return { side: null, entryPrice: 0, metrics: {} as ImbalanceMetrics }
+    }
+    
     // Update history
     this.orderbookHistory.push(orderbook)
     this.spreadHistory.push(orderbook.asks[0].price - orderbook.bids[0].price)
@@ -269,33 +291,35 @@ export class OrderFlowImbalance {
       fakeAskWall
     }
     
-    // Entry conditions for LONG (buy)
+    // Entry conditions for LONG (buy) - STRICTER THRESHOLDS
     const buyConditions = [
-      priceImpactImbalance < -0.6,  // Heavy sell pressure in book
-      Math.abs(microstructureFlowImbalance) < 0.3,  // Actual flow is balanced
-      flowToxicity < 0.4,  // Low informed trading
+      priceImpactImbalance < -0.8,  // VERY heavy sell pressure in book (was -0.6)
+      Math.abs(microstructureFlowImbalance) < 0.2,  // More balanced flow required (was 0.3)
+      flowToxicity < 0.3,  // Lower toxicity threshold (was 0.4)
       fakeAskWall,  // Potential fake sell wall
-      flowDirection > -0.7  // Not overwhelming selling
+      flowDirection > -0.5,  // Stricter flow direction (was -0.7)
+      orderbookPressure < -0.4  // Additional condition: bid resistance must be stronger
     ]
     
-    // Entry conditions for SHORT (sell)
+    // Entry conditions for SHORT (sell) - STRICTER THRESHOLDS
     const sellConditions = [
-      priceImpactImbalance > 0.6,  // Heavy buy pressure in book
-      Math.abs(microstructureFlowImbalance) < 0.3,  // Actual flow is balanced
-      flowToxicity < 0.4,  // Low informed trading
+      priceImpactImbalance > 0.8,  // VERY heavy buy pressure in book (was 0.6)
+      Math.abs(microstructureFlowImbalance) < 0.2,  // More balanced flow required (was 0.3)
+      flowToxicity < 0.3,  // Lower toxicity threshold (was 0.4)
       fakeBidWall,  // Potential fake buy wall
-      flowDirection < 0.7  // Not overwhelming buying
+      flowDirection < 0.5,  // Stricter flow direction (was 0.7)
+      orderbookPressure > 0.4  // Additional condition: ask resistance must be stronger
     ]
     
-    // Generate signals
+    // Generate signals - REQUIRE ALL CONDITIONS
     const buyScore = buyConditions.filter(c => c).length
     const sellScore = sellConditions.filter(c => c).length
     
-    if (buyScore >= 4) {
+    if (buyScore >= 5) {  // Increased from 4 to 5 (need 5 out of 6 conditions)
       // Place buy order one tick below best bid
       const entryPrice = orderbook.bids[0].price - this.tickSize
       return { side: 'BUY', entryPrice, metrics }
-    } else if (sellScore >= 4) {
+    } else if (sellScore >= 5) {  // Increased from 4 to 5
       // Place sell order one tick above best ask
       const entryPrice = orderbook.asks[0].price + this.tickSize
       return { side: 'SELL', entryPrice, metrics }

@@ -32,8 +32,10 @@ class OrderFlowTUI {
   private orderFlowAnalyzer: OrderFlowImbalance;
   private imbalanceHistory: CircularBuffer<ImbalanceHistory> = new CircularBuffer(50);
   private recentTrades: CircularBuffer<any> = new CircularBuffer(100);
-  private tickSize: number = 0.01;
+  private tickSize: number = 0.0001;
   private pricePrecision: number = 4;
+  private lastMetrics: any = null;
+  private lastSignal: any = null;
   
   constructor(
     private readonly symbol: string,
@@ -41,11 +43,21 @@ class OrderFlowTUI {
     private readonly avgTradeSize: number,
     private readonly avgSpread: number
   ) {
+    // Adjust precision based on symbol
+    if (symbol.includes('BTC')) {
+      this.tickSize = 0.1;
+      this.pricePrecision = 1;
+    } else if (symbol.includes('SHIB')) {
+      this.tickSize = 0.0000001;
+      this.pricePrecision = 7;
+    }
     // Create screen
     this.screen = blessed.screen({
       smartCSR: true,
       title: `Order Flow Monitor - ${symbol}`,
-      fullUnicode: true
+      fullUnicode: true,
+      forceUnicode: true,
+      tags: true
     });
     
     // Create layout
@@ -59,6 +71,7 @@ class OrderFlowTUI {
       scrollable: true,
       mouse: true,
       vi: true,
+      tags: true,
       style: {
         border: { fg: 'cyan' }
       }
@@ -74,6 +87,8 @@ class OrderFlowTUI {
       scrollable: true,
       mouse: true,
       vi: true,
+      tags: true,
+      wrap: true,
       style: {
         border: { fg: 'yellow' }
       }
@@ -89,6 +104,7 @@ class OrderFlowTUI {
       scrollable: true,
       mouse: true,
       vi: true,
+      tags: true,
       style: {
         border: { fg: 'magenta' }
       }
@@ -104,6 +120,7 @@ class OrderFlowTUI {
       scrollable: true,
       mouse: true,
       vi: true,
+      tags: true,
       style: {
         border: { fg: 'green' }
       }
@@ -119,6 +136,7 @@ class OrderFlowTUI {
       scrollable: true,
       mouse: true,
       vi: true,
+      tags: true,
       style: {
         border: { fg: 'blue' }
       }
@@ -134,6 +152,7 @@ class OrderFlowTUI {
       scrollable: true,
       mouse: true,
       vi: true,
+      tags: true,
       style: {
         border: { fg: 'white' }
       }
@@ -145,6 +164,7 @@ class OrderFlowTUI {
       left: 0,
       width: '100%',
       height: 1,
+      tags: true,
       style: {
         fg: 'white',
         bg: 'blue'
@@ -223,34 +243,38 @@ class OrderFlowTUI {
   private formatMetrics(metrics: any): string {
     const lines: string[] = [];
     
-    lines.push(`{bold}Price Impact Imbalance (PII):{/bold}`);
+    if (!metrics || typeof metrics.priceImpactImbalance === 'undefined') {
+      return lines.join('\n');
+    }
+    
+    lines.push('{bold}Price Impact Imbalance (PII):{/bold}');
     lines.push(this.createBar(metrics.priceImpactImbalance, -1, 1, 'Sell Pressure', 'Buy Pressure'));
-    lines.push(`Value: ${metrics.priceImpactImbalance.toFixed(3)}`);
+    lines.push('Value: ' + metrics.priceImpactImbalance.toFixed(3));
     lines.push('');
     
-    lines.push(`{bold}Orderbook Pressure (OBP):{/bold}`);
+    lines.push('{bold}Orderbook Pressure (OBP):{/bold}');
     lines.push(this.createBar(metrics.orderbookPressure, -1, 1, 'Ask Resistance', 'Bid Resistance'));
-    lines.push(`Value: ${metrics.orderbookPressure.toFixed(3)}`);
+    lines.push('Value: ' + metrics.orderbookPressure.toFixed(3));
     lines.push('');
     
-    lines.push(`{bold}Microstructure Flow Imbalance (MFI):{/bold}`);
+    lines.push('{bold}Microstructure Flow Imbalance (MFI):{/bold}');
     lines.push(this.createBar(metrics.microstructureFlowImbalance, -1, 1, 'Down Pressure', 'Up Pressure'));
-    lines.push(`Value: ${metrics.microstructureFlowImbalance.toFixed(3)}`);
+    lines.push('Value: ' + metrics.microstructureFlowImbalance.toFixed(3));
     lines.push('');
     
-    lines.push(`{bold}Flow Toxicity:{/bold}`);
+    lines.push('{bold}Flow Toxicity:{/bold}');
     lines.push(this.createBar(metrics.flowToxicity, 0, 1, 'Low', 'High'));
-    lines.push(`Value: ${metrics.flowToxicity.toFixed(3)}`);
+    lines.push('Value: ' + metrics.flowToxicity.toFixed(3));
     lines.push('');
     
-    lines.push(`{bold}Flow Direction:{/bold}`);
+    lines.push('{bold}Flow Direction:{/bold}');
     lines.push(this.createBar(metrics.flowDirection, -1, 1, 'Selling', 'Buying'));
-    lines.push(`Value: ${metrics.flowDirection.toFixed(3)}`);
+    lines.push('Value: ' + metrics.flowDirection.toFixed(3));
     lines.push('');
     
-    lines.push(`{bold}Fake Walls:{/bold}`);
-    lines.push(`Bid Wall: ${metrics.fakeBidWall ? '{red-fg}YES{/red-fg}' : '{green-fg}NO{/green-fg}'}`);
-    lines.push(`Ask Wall: ${metrics.fakeAskWall ? '{red-fg}YES{/red-fg}' : '{green-fg}NO{/green-fg}'}`);
+    lines.push('{bold}Fake Walls:{/bold}');
+    lines.push('Bid Wall: ' + (metrics.fakeBidWall ? '{red-fg}YES{/red-fg}' : '{green-fg}NO{/green-fg}'));
+    lines.push('Ask Wall: ' + (metrics.fakeAskWall ? '{red-fg}YES{/red-fg}' : '{green-fg}NO{/green-fg}'));
     
     return lines.join('\n');
   }
@@ -265,7 +289,7 @@ class OrderFlowTUI {
     let result = leftLabel.padEnd(12) + ' ';
     for (let i = 0; i < width; i++) {
       if (i === position) {
-        result += `{yellow-fg}${pointer}{/yellow-fg}`;
+        result += '{yellow-fg}' + pointer + '{/yellow-fg}';
       } else if (i === Math.round(width / 2)) {
         result += '│';
       } else {
@@ -339,6 +363,17 @@ class OrderFlowTUI {
   private formatSignals(signal: any): string {
     const lines: string[] = [];
     
+    if (!signal || !signal.metrics) {
+      // Still show the waiting state even without metrics
+      lines.push('No active signal');
+      lines.push('');
+      lines.push('{bold}Waiting for conditions:{/bold}');
+      lines.push('• 5+ out of 6 conditions must be met');
+      lines.push('• Very low flow toxicity (<0.3)');
+      lines.push('• Strong imbalance mismatch (>0.8)');
+      return lines.join('\n');
+    }
+    
     if (signal.side) {
       lines.push(`{bold}{${signal.side === 'BUY' ? 'green' : 'red'}-fg}═══ ${signal.side} SIGNAL ═══{/${signal.side === 'BUY' ? 'green' : 'red'}-fg}{/bold}`);
       lines.push(`Entry Price: ${signal.entryPrice.toFixed(this.pricePrecision)}`);
@@ -346,25 +381,38 @@ class OrderFlowTUI {
       lines.push(`{bold}Entry Conditions Met:{/bold}`);
       
       if (signal.side === 'BUY') {
-        lines.push(`✓ PII < -0.6: ${signal.metrics.priceImpactImbalance.toFixed(3)}`);
-        lines.push(`${Math.abs(signal.metrics.microstructureFlowImbalance) < 0.3 ? '✓' : '✗'} |MFI| < 0.3: ${Math.abs(signal.metrics.microstructureFlowImbalance).toFixed(3)}`);
-        lines.push(`${signal.metrics.flowToxicity < 0.4 ? '✓' : '✗'} Toxicity < 0.4: ${signal.metrics.flowToxicity.toFixed(3)}`);
+        lines.push(`✓ PII < -0.8: ${signal.metrics.priceImpactImbalance.toFixed(3)}`);
+        lines.push(`${Math.abs(signal.metrics.microstructureFlowImbalance) < 0.2 ? '✓' : '✗'} |MFI| < 0.2: ${Math.abs(signal.metrics.microstructureFlowImbalance).toFixed(3)}`);
+        lines.push(`${signal.metrics.flowToxicity < 0.3 ? '✓' : '✗'} Toxicity < 0.3: ${signal.metrics.flowToxicity.toFixed(3)}`);
         lines.push(`${signal.metrics.fakeAskWall ? '✓' : '✗'} Fake Ask Wall: ${signal.metrics.fakeAskWall}`);
-        lines.push(`${signal.metrics.flowDirection > -0.7 ? '✓' : '✗'} Flow Dir > -0.7: ${signal.metrics.flowDirection.toFixed(3)}`);
+        lines.push(`${signal.metrics.flowDirection > -0.5 ? '✓' : '✗'} Flow Dir > -0.5: ${signal.metrics.flowDirection.toFixed(3)}`);
+        lines.push(`${signal.metrics.orderbookPressure < -0.4 ? '✓' : '✗'} OBP < -0.4: ${signal.metrics.orderbookPressure.toFixed(3)}`);
       } else {
-        lines.push(`✓ PII > 0.6: ${signal.metrics.priceImpactImbalance.toFixed(3)}`);
-        lines.push(`${Math.abs(signal.metrics.microstructureFlowImbalance) < 0.3 ? '✓' : '✗'} |MFI| < 0.3: ${Math.abs(signal.metrics.microstructureFlowImbalance).toFixed(3)}`);
-        lines.push(`${signal.metrics.flowToxicity < 0.4 ? '✓' : '✗'} Toxicity < 0.4: ${signal.metrics.flowToxicity.toFixed(3)}`);
+        lines.push(`✓ PII > 0.8: ${signal.metrics.priceImpactImbalance.toFixed(3)}`);
+        lines.push(`${Math.abs(signal.metrics.microstructureFlowImbalance) < 0.2 ? '✓' : '✗'} |MFI| < 0.2: ${Math.abs(signal.metrics.microstructureFlowImbalance).toFixed(3)}`);
+        lines.push(`${signal.metrics.flowToxicity < 0.3 ? '✓' : '✗'} Toxicity < 0.3: ${signal.metrics.flowToxicity.toFixed(3)}`);
         lines.push(`${signal.metrics.fakeBidWall ? '✓' : '✗'} Fake Bid Wall: ${signal.metrics.fakeBidWall}`);
-        lines.push(`${signal.metrics.flowDirection < 0.7 ? '✓' : '✗'} Flow Dir < 0.7: ${signal.metrics.flowDirection.toFixed(3)}`);
+        lines.push(`${signal.metrics.flowDirection < 0.5 ? '✓' : '✗'} Flow Dir < 0.5: ${signal.metrics.flowDirection.toFixed(3)}`);
+        lines.push(`${signal.metrics.orderbookPressure > 0.4 ? '✓' : '✗'} OBP > 0.4: ${signal.metrics.orderbookPressure.toFixed(3)}`);
       }
-    } else {
-      lines.push(`{dim}No active signal{/dim}`);
+    } else if (signal.metrics) {
+      // Show current metric status even without a signal
+      lines.push('No active signal');
       lines.push('');
-      lines.push(`{bold}Waiting for conditions:{/bold}`);
-      lines.push(`• 4+ conditions must be met`);
-      lines.push(`• Low flow toxicity`);
-      lines.push(`• Imbalance mismatch`);
+      lines.push('{bold}Current Conditions:{/bold}');
+      lines.push(`PII: ${signal.metrics.priceImpactImbalance?.toFixed(3) || 'N/A'}`);
+      lines.push(`|MFI|: ${typeof signal.metrics.microstructureFlowImbalance === 'number' ? Math.abs(signal.metrics.microstructureFlowImbalance).toFixed(3) : 'N/A'}`);
+      lines.push(`Toxicity: ${signal.metrics.flowToxicity?.toFixed(3) || 'N/A'}`);
+      lines.push(`Flow Dir: ${signal.metrics.flowDirection?.toFixed(3) || 'N/A'}`);
+      lines.push(`Fake Walls: Bid=${signal.metrics.fakeBidWall ? 'Y' : 'N'}, Ask=${signal.metrics.fakeAskWall ? 'Y' : 'N'}`);
+    } else {
+      // No metrics available
+      lines.push('No active signal');
+      lines.push('');
+      lines.push('{bold}Waiting for conditions:{/bold}');
+      lines.push('• 5+ out of 6 conditions must be met');
+      lines.push('• Very low flow toxicity (<0.3)');
+      lines.push('• Strong imbalance mismatch (>0.8)');
     }
     
     return lines.join('\n');
@@ -378,7 +426,7 @@ class OrderFlowTUI {
     const signals = history.filter(h => h.signal !== null).slice(-5);
     
     if (signals.length === 0) {
-      lines.push(`{dim}No recent signals{/dim}`);
+      lines.push('No recent signals');
     } else {
       signals.forEach(s => {
         const time = new Date(s.timestamp).toLocaleTimeString();
@@ -404,52 +452,70 @@ class OrderFlowTUI {
   }
   
   update(orderbook: OrderbookSnapshot, trade?: any): void {
-    // Add trade to analyzer if provided
-    if (trade) {
-      this.orderFlowAnalyzer.addTrade(
-        trade.price,
-        trade.quantity,
-        trade.isBuyerMaker,
-        trade.timestamp
-      );
-      this.recentTrades.push(trade);
+    try {
+      // Add trade to analyzer if provided
+      if (trade) {
+        this.orderFlowAnalyzer.addTrade(
+          trade.price,
+          trade.quantity,
+          trade.isBuyerMaker,
+          trade.timestamp
+        );
+        this.recentTrades.push(trade);
+        
+        // Update trades box
+        const tradeStr = `${new Date(trade.timestamp).toLocaleTimeString()} ${
+          trade.isBuyerMaker ? 'SELL' : 'BUY '
+        } ${trade.quantity.toFixed(2)} @ ${trade.price.toFixed(this.pricePrecision)}`;
+        this.tradesBox.log(trade.isBuyerMaker ? `{red-fg}${tradeStr}{/red-fg}` : `{green-fg}${tradeStr}{/green-fg}`);
+      }
       
-      // Update trades box
-      const tradeStr = `${new Date(trade.timestamp).toLocaleTimeString()} ${
-        trade.isBuyerMaker ? 'SELL' : 'BUY '
-      } ${trade.quantity.toFixed(2)} @ ${trade.price.toFixed(this.pricePrecision)}`;
-      this.tradesBox.log(trade.isBuyerMaker ? `{red-fg}${tradeStr}{/red-fg}` : `{green-fg}${tradeStr}{/green-fg}`);
+      // Update analyzer and get signal
+      const signal = this.orderFlowAnalyzer.update(orderbook);
+      
+      // Store history and update last known good data ONLY if we have valid metrics
+      if (signal && signal.metrics && typeof signal.metrics.priceImpactImbalance === 'number') {
+        this.lastMetrics = signal.metrics;
+        this.lastSignal = signal;
+        
+        this.imbalanceHistory.push({
+          timestamp: Date.now(),
+          priceImpactImbalance: signal.metrics.priceImpactImbalance,
+          orderbookPressure: signal.metrics.orderbookPressure,
+          microstructureFlowImbalance: signal.metrics.microstructureFlowImbalance,
+          flowToxicity: signal.metrics.flowToxicity,
+          flowDirection: signal.metrics.flowDirection,
+          signal: signal.side
+        });
+      }
+      
+      // Update display boxes - always use last known good data
+      this.orderbookBox.setContent(this.formatOrderbook(orderbook));
+      
+      // Use current data if available, otherwise use last known good data
+      const hasValidCurrentMetrics = signal && signal.metrics && typeof signal.metrics.priceImpactImbalance === 'number';
+      const metricsToDisplay = hasValidCurrentMetrics ? signal.metrics : this.lastMetrics;
+      const signalToDisplay = hasValidCurrentMetrics ? signal : this.lastSignal;
+      
+      // Always show metrics if we have any data (current or last)
+      if (metricsToDisplay) {
+        this.metricsBox.setContent(this.formatMetrics(metricsToDisplay));
+      }
+      
+      if (signalToDisplay) {
+        this.signalBox.setContent(this.formatSignals(signalToDisplay));
+      } else {
+        this.signalBox.setContent('No active signal\n\n{bold}Waiting for conditions:{/bold}\n• 4+ conditions must be met\n• Low flow toxicity\n• Imbalance mismatch');
+      }
+      
+      this.flowBox.setContent(this.formatFlowAnalysis(this.recentTrades.getAll()));
+      this.historyBox.setContent(this.formatHistory());
+      
+      // Render screen
+      this.screen.render();
+    } catch (error) {
+      console.error('Error updating display:', error);
     }
-    
-    // Update analyzer and get signal
-    const signal = this.orderFlowAnalyzer.update(orderbook);
-    
-    // Store history
-    if (signal.metrics) {
-      this.imbalanceHistory.push({
-        timestamp: Date.now(),
-        priceImpactImbalance: signal.metrics.priceImpactImbalance,
-        orderbookPressure: signal.metrics.orderbookPressure,
-        microstructureFlowImbalance: signal.metrics.microstructureFlowImbalance,
-        flowToxicity: signal.metrics.flowToxicity,
-        flowDirection: signal.metrics.flowDirection,
-        signal: signal.side
-      });
-    }
-    
-    // Update display boxes
-    this.orderbookBox.setContent(this.formatOrderbook(orderbook));
-    
-    if (signal.metrics) {
-      this.metricsBox.setContent(this.formatMetrics(signal.metrics));
-      this.signalBox.setContent(this.formatSignals(signal));
-    }
-    
-    this.flowBox.setContent(this.formatFlowAnalysis(this.recentTrades.getAll()));
-    this.historyBox.setContent(this.formatHistory());
-    
-    // Render screen
-    this.screen.render();
   }
   
   start(): void {
@@ -465,6 +531,7 @@ async function main() {
     .description('Order Flow Imbalance visualization tool for Binance futures')
     .version('0.1.0')
     .argument('[symbol]', 'Trading symbol (e.g., BTCUSDT)')
+    .option('-s, --symbol <symbol>', 'Trading symbol (alternative to positional argument)')
     .option('-a, --atr <number>', 'ATR value', parseFloat, 50.0)
     .option('-t, --avg-trade <number>', 'Average trade size', parseFloat, 0.5)
     .option('-p, --avg-spread <number>', 'Average spread', parseFloat, 0.1)

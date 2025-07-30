@@ -32,6 +32,8 @@ interface Position {
   entryTime: number;
   slOrderId?: string;
   slPrice: number;
+  tpOrderId?: string;
+  tpPrice?: number;
   unrealizedPnl?: number;
 }
 
@@ -463,7 +465,10 @@ class OrderFlowMMTUI {
       // Check existing positions
       await this.checkExistingPositions();
       
-      this.tradingState = 'WATCHING';
+      // Only set to WATCHING if no position was found
+      if (this.tradingState === 'IDLE') {
+        this.tradingState = 'WATCHING';
+      }
       this.log('Trading initialized', 'success');
     } catch (error: any) {
       this.log(`Failed to initialize: ${error.message || error}`, 'error');
@@ -618,15 +623,15 @@ class OrderFlowMMTUI {
       }
     }
     
-    // Check position updates
-    if (this.position) {
-      const positionUpdate = update.positions.find(p => p.symbol === this.symbol);
+    // Check position updates for our symbol
+    const positionUpdate = update.positions.find(p => p.symbol === this.symbol);
+    
+    if (positionUpdate) {
+      const posAmt = parseFloat(positionUpdate.positionAmt);
       
-      if (positionUpdate) {
-        const posAmt = parseFloat(positionUpdate.positionAmt);
-        
-        if (posAmt === 0) {
-          // Position closed
+      if (posAmt === 0) {
+        // Position closed
+        if (this.position) {
           const unrealizedProfit = parseFloat(positionUpdate.unRealizedProfit);
           this.log(`Position closed (PnL: $${unrealizedProfit.toFixed(2)})`, 'success');
           
@@ -640,19 +645,102 @@ class OrderFlowMMTUI {
           }
           
           this.position = null;
-          this.tradingState = 'WATCHING';
         }
+        
+        // Reset to watching state if we're in position-related state
+        if (this.tradingState === 'POSITION_ACTIVE' || this.tradingState === 'CLOSING') {
+          this.tradingState = 'WATCHING';
+          this.log('No position detected, switched to WATCHING state', 'info');
+        }
+      } else {
+        // Position exists
+        if (!this.position) {
+          // New position detected that we didn't track
+          const side = posAmt > 0 ? 'LONG' : 'SHORT';
+          const entryPrice = parseFloat(positionUpdate.entryPrice);
+          
+          this.position = {
+            symbol: this.symbol,
+            side,
+            entryPrice,
+            size: Math.abs(posAmt),
+            entryTime: Date.now(),
+            slPrice: this.calculateSLPrice(side, entryPrice),
+            tpPrice: this.calculateTPPrice(side, entryPrice)
+          };
+          
+          // Change state to POSITION_ACTIVE regardless of previous state
+          // This handles the case where we go from empty to active position
+          this.tradingState = 'POSITION_ACTIVE';
+          this.log(`Position opened: ${side} @ ${entryPrice} (via WebSocket)`, 'success');
+          this.log(`Entering position management state - waiting for SL/TP`, 'info');
+          
+          // Place SL/TP orders for the detected position
+          await this.placePositionOrders();
+        } else {
+          // Update existing position size if changed
+          const newSize = Math.abs(posAmt);
+          if (newSize !== this.position.size) {
+            this.log(`Position size changed: ${this.position.size} → ${newSize}`, 'warn');
+            this.position.size = newSize;
+            
+            // May need to update SL/TP orders if size changed significantly
+            await this.ensurePositionOrders();
+          }
+        }
+      }
+    } else if (this.position) {
+      // No position update for our symbol but we think we have a position
+      // This might mean the position was closed
+      this.position = null;
+      if (this.tradingState === 'POSITION_ACTIVE' || this.tradingState === 'CLOSING') {
+        this.tradingState = 'WATCHING';
+        this.log('Position closed, switched to WATCHING state', 'info');
       }
     }
   }
   
   private async handleOrderUpdate(update: OrderUpdate) {
-    if (!this.markerOrder) return;
-    
     const orderId = update.orderId.toString();
     
+    // Check if this is a TP or SL order
+    if (this.position) {
+      if (orderId === this.position.tpOrderId || orderId === this.position.slOrderId) {
+        const isTP = orderId === this.position.tpOrderId;
+        const orderType = isTP ? 'TP' : 'SL';
+        
+        if (update.orderStatus === 'FILLED') {
+          this.log(`${orderType} order FILLED: Closing position`, 'success');
+          
+          // Position will be closed, state will be updated via handleAccountUpdate
+          // but we can set it to CLOSING to indicate we're expecting the position to close
+          this.tradingState = 'CLOSING';
+          
+          // Cancel the other order (TP if SL filled, SL if TP filled)
+          if (isTP && this.position.slOrderId) {
+            await this.mcpClient?.callTool({
+              name: 'cancel_order',
+              arguments: {
+                symbol: this.symbol,
+                orderId: this.position.slOrderId
+              }
+            }).catch(err => this.log(`Failed to cancel SL: ${err}`, 'error'));
+          } else if (!isTP && this.position.tpOrderId) {
+            await this.mcpClient?.callTool({
+              name: 'cancel_order',
+              arguments: {
+                symbol: this.symbol,
+                orderId: this.position.tpOrderId
+              }
+            }).catch(err => this.log(`Failed to cancel TP: ${err}`, 'error'));
+          }
+        }
+        return;
+      }
+    }
+    
     // Check if this is one of our MM orders
-    if (orderId === this.markerOrder.bidOrderId || orderId === this.markerOrder.askOrderId) {
+    if (this.markerOrder && (orderId === this.markerOrder.bidOrderId || orderId === this.markerOrder.askOrderId)) {
       const isBidOrder = orderId === this.markerOrder.bidOrderId;
       const orderType = isBidOrder ? 'Bid' : 'Ask';
       
@@ -689,7 +777,8 @@ class OrderFlowMMTUI {
           entryPrice: fillPrice,
           size: this.markerOrder.size,
           entryTime: Date.now(),
-          slPrice: this.calculateSLPrice(side, fillPrice)
+          slPrice: this.calculateSLPrice(side, fillPrice),
+          tpPrice: this.calculateTPPrice(side, fillPrice)
         };
         
         this.markerOrder = null;
@@ -697,10 +786,10 @@ class OrderFlowMMTUI {
         this.tradingStats.lastTradeTime = Date.now();
         
         this.log(`Position opened: ${side} @ ${fillPrice}`, 'success');
-        this.log(`SL: ${this.position.slPrice.toFixed(this.pricePrecision)}`, 'info');
+        this.log(`Target: SL @ ${this.position.slPrice.toFixed(this.pricePrecision)}, TP @ ${this.position.tpPrice.toFixed(this.pricePrecision)}`, 'info');
         
-        // Place stop loss immediately
-        await this.placeSLOrder();
+        // Place both SL and TP orders immediately
+        await this.placePositionOrders();
         
       } else if (update.orderStatus === 'CANCELED') {
         this.log(`${orderType} order cancelled`, 'warn');
@@ -748,14 +837,30 @@ class OrderFlowMMTUI {
           entryPrice,
           size: Math.abs(positionAmt),
           entryTime: Date.now() - 60000,
-          slPrice: this.calculateSLPrice(side, entryPrice)
+          slPrice: this.calculateSLPrice(side, entryPrice),
+          tpPrice: this.calculateTPPrice(side, entryPrice)
         };
         
         this.tradingState = 'POSITION_ACTIVE';
         this.log(`Found existing ${side} position @ ${entryPrice}`, 'warn');
         
-        // Place SL if missing
-        await this.ensureSLOrder();
+        // Check if calculated prices are valid
+        if (this.position.slPrice <= 0 || this.position.tpPrice <= 0) {
+          this.log(`Invalid price calculation detected, using percentage-based targets`, 'warn');
+          // Fallback to simple percentage-based targets
+          if (side === 'LONG') {
+            this.position.slPrice = this.roundToTickSize(entryPrice * 0.99); // 1% SL
+            this.position.tpPrice = this.roundToTickSize(entryPrice * 1.02); // 2% TP
+          } else {
+            this.position.slPrice = this.roundToTickSize(entryPrice * 1.01); // 1% SL
+            this.position.tpPrice = this.roundToTickSize(entryPrice * 0.98); // 2% TP
+          }
+        }
+        
+        this.log(`Setting targets: SL @ ${this.position.slPrice.toFixed(this.pricePrecision)}, TP @ ${this.position.tpPrice.toFixed(this.pricePrecision)}`, 'info');
+        
+        // Place both SL and TP orders if missing
+        await this.placePositionOrders();
       }
     } catch (error) {
       this.log(`Error checking positions: ${error}`, 'error');
@@ -763,10 +868,20 @@ class OrderFlowMMTUI {
   }
   
   private calculateSLPrice(side: 'LONG' | 'SHORT', entryPrice: number): number {
-    const slDistance = this.atrValue; // 1 ATR stop loss
+    // For crypto, ATR is usually a percentage, not absolute price
+    // Use 1% of price as stop loss if ATR is too large
+    const slDistance = Math.min(this.atrValue, entryPrice * 0.01);
     return side === 'LONG' 
       ? this.roundToTickSize(entryPrice - slDistance)
       : this.roundToTickSize(entryPrice + slDistance);
+  }
+  
+  private calculateTPPrice(side: 'LONG' | 'SHORT', entryPrice: number): number {
+    // Use 2% of price as take profit for 2:1 risk/reward
+    const tpDistance = Math.min(this.atrValue * 2, entryPrice * 0.02);
+    return side === 'LONG'
+      ? this.roundToTickSize(entryPrice + tpDistance)
+      : this.roundToTickSize(entryPrice - tpDistance);
   }
   
   private roundToTickSize(price: number): number {
@@ -880,6 +995,12 @@ class OrderFlowMMTUI {
     
     // Handle MM signals from OrderFlowImbalance
     if (!signal || !signal.type) return;
+    
+    // Skip MM signals when we have an active position
+    if (this.position && this.tradingState === 'POSITION_ACTIVE') {
+      // MM signals are for market making, not position management
+      return;
+    }
     
     // Prevent concurrent signal processing
     if (this.isProcessingSignal) {
@@ -1136,18 +1257,86 @@ class OrderFlowMMTUI {
       if (!responseText.includes('error')) {
         const slOrder = JSON.parse(responseText);
         this.position.slOrderId = slOrder.orderId;
-        this.log(`SL order placed #${slOrder.orderId}`, 'success');
+        this.log(`SL order placed #${slOrder.orderId} @ ${this.position.slPrice.toFixed(this.pricePrecision)}`, 'success');
       }
     } catch (error) {
       this.log(`Failed to place SL order: ${error}`, 'error');
     }
   }
   
-  private async ensureSLOrder() {
-    if (!this.position || this.position.slOrderId) return;
+  private async placeTPOrder() {
+    if (!this.mcpClient || !this.position || !this.position.tpPrice) return;
     
-    this.log('SL order missing, placing now...', 'warn');
-    await this.placeSLOrder();
+    try {
+      const result = await this.mcpClient.callTool({
+        name: 'place_order',
+        arguments: {
+          symbol: this.position.symbol,
+          side: this.position.side === 'LONG' ? 'SELL' : 'BUY',
+          type: 'LIMIT',
+          quantity: this.position.size,
+          price: this.position.tpPrice,
+          timeInForce: 'GTX', // Post-only for maker fees
+          reduceOnly: true
+        }
+      });
+      
+      const responseText = (result.content as any)[0].text;
+      
+      if (!responseText.includes('error')) {
+        const tpOrder = JSON.parse(responseText);
+        this.position.tpOrderId = tpOrder.orderId;
+        this.log(`TP order placed #${tpOrder.orderId} @ ${this.position.tpPrice.toFixed(this.pricePrecision)}`, 'success');
+      } else {
+        // If post-only fails, try regular limit order
+        const retryResult = await this.mcpClient.callTool({
+          name: 'place_order',
+          arguments: {
+            symbol: this.position.symbol,
+            side: this.position.side === 'LONG' ? 'SELL' : 'BUY',
+            type: 'LIMIT',
+            quantity: this.position.size,
+            price: this.position.tpPrice,
+            timeInForce: 'GTC',
+            reduceOnly: true
+          }
+        });
+        
+        const retryResponseText = (retryResult.content as any)[0].text;
+        if (!retryResponseText.includes('error')) {
+          const tpOrder = JSON.parse(retryResponseText);
+          this.position.tpOrderId = tpOrder.orderId;
+          this.log(`TP order placed #${tpOrder.orderId} @ ${this.position.tpPrice.toFixed(this.pricePrecision)} (taker)`, 'success');
+        }
+      }
+    } catch (error) {
+      this.log(`Failed to place TP order: ${error}`, 'error');
+    }
+  }
+  
+  private async placePositionOrders() {
+    if (!this.position) return;
+    
+    this.log('Placing position management orders...', 'info');
+    
+    // Place both SL and TP orders
+    await Promise.all([
+      this.placeSLOrder(),
+      this.placeTPOrder()
+    ]);
+  }
+  
+  private async ensurePositionOrders() {
+    if (!this.position) return;
+    
+    const needsSL = !this.position.slOrderId;
+    const needsTP = this.position.tpPrice && !this.position.tpOrderId;
+    
+    if (needsSL || needsTP) {
+      this.log('Position orders missing, placing now...', 'warn');
+      if (needsSL) await this.placeSLOrder();
+      if (needsTP) await this.placeTPOrder();
+    }
   }
   
   private async cleanup() {
@@ -1168,7 +1357,37 @@ class OrderFlowMMTUI {
     const lines: string[] = [];
     
     lines.push(`{bold}Mode:{/bold} {green-fg}LIVE TRADING{/green-fg}`);
-    lines.push(`{bold}State:{/bold} ${this.tradingState}`);
+    
+    // Show descriptive state
+    let stateDisplay = this.tradingState;
+    let stateColor = 'white-fg';
+    switch (this.tradingState) {
+      case 'IDLE':
+        stateDisplay = 'IDLE - Initializing';
+        stateColor = 'gray-fg';
+        break;
+      case 'WATCHING':
+        stateDisplay = 'WATCHING - Ready for signals';
+        stateColor = 'cyan-fg';
+        break;
+      case 'ORDER_PLACED':
+        stateDisplay = 'ORDER_PLACED - MM orders active';
+        stateColor = 'yellow-fg';
+        break;
+      case 'POSITION_ACTIVE':
+        stateDisplay = 'POSITION_ACTIVE - Managing position';
+        stateColor = 'green-fg';
+        break;
+      case 'CLOSING':
+        stateDisplay = 'CLOSING - Exiting position';
+        stateColor = 'magenta-fg';
+        break;
+      case 'ERROR':
+        stateDisplay = 'ERROR - Check logs';
+        stateColor = 'red-fg';
+        break;
+    }
+    lines.push(`{bold}State:{/bold} {${stateColor}}${stateDisplay}{/${stateColor}}`);
     lines.push(`{bold}Balance:{/bold} $${this.accountBalance.toFixed(2)}`);
     lines.push('');
     
@@ -1177,7 +1396,10 @@ class OrderFlowMMTUI {
       lines.push(`Side: ${this.position.side}`);
       lines.push(`Entry: ${this.position.entryPrice.toFixed(this.pricePrecision)}`);
       lines.push(`Size: ${this.position.size}`);
-      lines.push(`SL: ${this.position.slPrice.toFixed(this.pricePrecision)}`);
+      lines.push(`SL: ${this.position.slPrice.toFixed(this.pricePrecision)}${this.position.slOrderId ? ' ✓' : ' ⚠'}`);
+      if (this.position.tpPrice) {
+        lines.push(`TP: ${this.position.tpPrice.toFixed(this.pricePrecision)}${this.position.tpOrderId ? ' ✓' : ' ⚠'}`);
+      }
       
       const currentPrice = this.getCurrentPrice();
       if (currentPrice) {

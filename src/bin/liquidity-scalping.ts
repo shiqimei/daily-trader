@@ -94,7 +94,7 @@ class LiquidityScalpingStrategy {
   private currentMarket: MarketData | null = null
   private accountBalance: number = 0
   private lastPatternCheckTime: number = 0
-  private patternCheckInterval: number = 100 // ms
+  private patternCheckInterval: number = 1000 // Check patterns only once per second
   private positionStartTime: number = 0
   private exitTimeouts: NodeJS.Timeout[] = []
   private orderMonitorInterval: NodeJS.Timeout | null = null
@@ -272,10 +272,10 @@ class LiquidityScalpingStrategy {
     const derivatives = this.orderbookDynamics!.getCurrentDerivatives()
     const stats = this.orderbookDynamics!.getStats()
     
-    // Check spread condition (must be > 1 tick)
+    // Check spread condition (must be > 2 ticks for safety)
     const spreadTicks = stats.avgSpread / this.currentMarket!.tickSize
-    if (spreadTicks <= 1) {
-      return // No gap to place maker order
+    if (spreadTicks <= 2) {
+      return // No sufficient gap to place maker order
     }
     
     // Look for entry patterns
@@ -296,23 +296,29 @@ class LiquidityScalpingStrategy {
   }
 
   private checkEntrySignal(pattern: DynamicPattern): { side: 'BUY' | 'SELL', price: number } | null {
-    // Long signal: bids LIQUIDITY_SURGE or asks LIQUIDITY_WITHDRAWAL
-    if ((pattern.type === 'LIQUIDITY_SURGE' && pattern.side === 'BID' && pattern.strength > 60) ||
-        (pattern.type === 'LIQUIDITY_WITHDRAWAL' && pattern.side === 'ASK' && pattern.strength > 70)) {
+    // Long signal: bids LIQUIDITY_SURGE or asks LIQUIDITY_WITHDRAWAL (increased strength requirements)
+    if ((pattern.type === 'LIQUIDITY_SURGE' && pattern.side === 'BID' && pattern.strength > 80) ||
+        (pattern.type === 'LIQUIDITY_WITHDRAWAL' && pattern.side === 'ASK' && pattern.strength > 85)) {
       // Place buy order just below best ask
-      const price = this.currentMarket!.price - this.currentMarket!.tickSize
+      const price = this.roundToTickSize(this.currentMarket!.price - this.currentMarket!.tickSize)
       return { side: 'BUY', price }
     }
     
-    // Short signal: asks LIQUIDITY_SURGE or bids LIQUIDITY_WITHDRAWAL
-    if ((pattern.type === 'LIQUIDITY_SURGE' && pattern.side === 'ASK' && pattern.strength > 60) ||
-        (pattern.type === 'LIQUIDITY_WITHDRAWAL' && pattern.side === 'BID' && pattern.strength > 70)) {
+    // Short signal: asks LIQUIDITY_SURGE or bids LIQUIDITY_WITHDRAWAL (increased strength requirements)
+    if ((pattern.type === 'LIQUIDITY_SURGE' && pattern.side === 'ASK' && pattern.strength > 80) ||
+        (pattern.type === 'LIQUIDITY_WITHDRAWAL' && pattern.side === 'BID' && pattern.strength > 85)) {
       // Place sell order just above best bid
-      const price = this.currentMarket!.price + this.currentMarket!.tickSize
+      const price = this.roundToTickSize(this.currentMarket!.price + this.currentMarket!.tickSize)
       return { side: 'SELL', price }
     }
     
     return null
+  }
+
+  private roundToTickSize(price: number): number {
+    const tickSize = this.currentMarket!.tickSize
+    const precision = this.getPrecisionFromMinSize(tickSize)
+    return parseFloat((Math.round(price / tickSize) * tickSize).toFixed(precision))
   }
 
   private shouldCancelMarkerOrder(pattern: DynamicPattern): boolean {
@@ -349,29 +355,55 @@ class LiquidityScalpingStrategy {
         arguments: {
           symbol: this.currentMarket!.symbol,
           side: signal.side,
-          order_type: 'LIMIT',
+          type: 'LIMIT',
           quantity: positionSize,
           price: signal.price,
-          time_in_force: 'GTX' // Post-only
+          timeInForce: 'GTX' // Post-only
         }
       })
       
-      const order = JSON.parse((result.content as any)[0].text)
+      const responseText = (result.content as any)[0].text
+      
+      // Check if it's an error response
+      if (responseText.includes('error')) {
+        const errorData = JSON.parse(responseText)
+        
+        // Ignore Post-Only rejection errors when order would execute as taker
+        if (errorData.error && errorData.error.includes('could not be executed as maker')) {
+          // Silently skip - this is expected when order would cross spread
+          return
+        }
+        
+        console.error(chalk.red('Order placement failed:'), errorData.error)
+        throw new Error(errorData.error || 'Order placement failed')
+      }
+      
+      const order = JSON.parse(responseText)
+      
+      // Debug log to check order structure
+      if (!order.orderId) {
+        console.error(chalk.red('Error: Order response missing orderId'), order)
+        throw new Error('Invalid order response')
+      }
+      
       this.markerOrder = {
-        orderId: order.orderId,
+        orderId: order.orderId.toString(), // Ensure it's a string
         symbol: order.symbol,
         side: order.side,
-        price: order.price,
-        size: order.origQty,
+        price: parseFloat(order.price),
+        size: parseFloat(order.origQty),
         timeInForce: 'GTX'
       }
       
-      console.log(chalk.green(`✓ Placed ${signal.side} marker order at ${signal.price}`))
+      console.log(chalk.green(`✓ Placed ${signal.side} marker order #${order.orderId} at ${signal.price}`))
       
       // Start monitoring for fill
       this.monitorOrderFill()
-    } catch (error) {
-      console.error(chalk.red('Failed to place marker order:'), error)
+    } catch (error: any) {
+      // Only log if it's not a Post-Only rejection
+      if (!error.message || !error.message.includes('could not be executed as maker')) {
+        console.error(chalk.red('Failed to place marker order:'), error)
+      }
     }
   }
   
@@ -389,7 +421,7 @@ class LiquidityScalpingStrategy {
           name: 'get_order',
           arguments: {
             symbol: this.markerOrder!.symbol,
-            order_id: this.markerOrder!.orderId
+            orderId: this.markerOrder!.orderId
           }
         })
         
@@ -402,8 +434,8 @@ class LiquidityScalpingStrategy {
         } else if (order.status === 'CANCELED' || order.status === 'EXPIRED') {
           clearInterval(this.orderMonitorInterval!)
           this.orderMonitorInterval = null
+          console.log(chalk.yellow(`Marker order #${this.markerOrder!.orderId} ${order.status.toLowerCase()}`))
           this.markerOrder = null
-          console.log(chalk.yellow(`Marker order ${order.status.toLowerCase()}`))
         }
       } catch (error) {
         // Continue monitoring
@@ -412,21 +444,35 @@ class LiquidityScalpingStrategy {
   }
 
   private async cancelMarkerOrder() {
-    if (!this.markerOrder) return
+    if (!this.markerOrder) {
+      console.warn(chalk.yellow('Warning: Attempted to cancel non-existent marker order'))
+      return
+    }
+    
+    const orderId = this.markerOrder.orderId
+    const symbol = this.markerOrder.symbol
     
     try {
-      await this.mcpClient!.callTool({
+      const result = await this.mcpClient!.callTool({
         name: 'cancel_order',
         arguments: {
-          symbol: this.markerOrder.symbol,
-          order_id: this.markerOrder.orderId
+          symbol: symbol,
+          orderId: orderId
         }
       })
       
-      console.log(chalk.yellow(`✓ Cancelled marker order ${this.markerOrder.orderId}`))
+      console.log(chalk.yellow(`✓ Cancelled marker order #${orderId}`))
       this.markerOrder = null
-    } catch (error) {
-      console.error(chalk.red('Failed to cancel marker order:'), error)
+      
+      // Clear order monitor if running
+      if (this.orderMonitorInterval) {
+        clearInterval(this.orderMonitorInterval)
+        this.orderMonitorInterval = null
+      }
+    } catch (error: any) {
+      console.error(chalk.red(`Failed to cancel marker order #${orderId}:`), error.message || error)
+      // Still clear the marker order reference on error
+      this.markerOrder = null
     }
   }
 
@@ -442,12 +488,16 @@ class LiquidityScalpingStrategy {
       entryPrice: this.markerOrder.price,
       size: this.markerOrder.size,
       entryTime: Date.now(),
-      tpPrice: side === 'LONG' 
-        ? this.markerOrder.price + atrValue
-        : this.markerOrder.price - atrValue,
-      slPrice: side === 'LONG'
-        ? this.markerOrder.price - (atrValue * 0.5)
-        : this.markerOrder.price + (atrValue * 0.5)
+      tpPrice: this.roundToTickSize(
+        side === 'LONG' 
+          ? this.markerOrder.price + atrValue
+          : this.markerOrder.price - atrValue
+      ),
+      slPrice: this.roundToTickSize(
+        side === 'LONG'
+          ? this.markerOrder.price - (atrValue * 0.5)
+          : this.markerOrder.price + (atrValue * 0.5)
+      )
     }
     
     this.markerOrder = null
@@ -466,33 +516,27 @@ class LiquidityScalpingStrategy {
     if (!this.position) return
     
     try {
-      // Place TP order (maker)
+      // Place TP order using set_take_profit
       const tpResult = await this.mcpClient!.callTool({
-        name: 'place_order',
+        name: 'set_take_profit',
         arguments: {
           symbol: this.position.symbol,
-          side: this.position.side === 'LONG' ? 'SELL' : 'BUY',
-          order_type: 'LIMIT',
-          quantity: this.position.size,
+          side: this.position.side,
           price: this.position.tpPrice,
-          time_in_force: 'GTX',
-          reduce_only: true
+          percentage: 100 // Close full position at TP
         }
       })
       
       const tpOrder = JSON.parse((tpResult.content as any)[0].text)
       this.position.tpOrderId = tpOrder.orderId
       
-      // Place SL order (stop market)
+      // Place SL order using set_stop_loss
       const slResult = await this.mcpClient!.callTool({
-        name: 'place_order',
+        name: 'set_stop_loss',
         arguments: {
           symbol: this.position.symbol,
-          side: this.position.side === 'LONG' ? 'SELL' : 'BUY',
-          order_type: 'STOP_MARKET',
-          quantity: this.position.size,
-          stop_price: this.position.slPrice,
-          reduce_only: true
+          side: this.position.side,
+          stop_price: this.position.slPrice
         }
       })
       
@@ -553,6 +597,8 @@ class LiquidityScalpingStrategy {
       await this.exitPosition(1.0)
     }
     
+    // Check position status periodically
+    await this.checkPositionStatus()
   }
   
   private async checkPositionStatus() {
@@ -592,32 +638,20 @@ class LiquidityScalpingStrategy {
   private async moveSLToBreakeven() {
     if (!this.position || this.position.breakEvenMoved) return
     
-    const newSL = this.position.side === 'LONG'
-      ? this.position.entryPrice + this.currentMarket!.tickSize
-      : this.position.entryPrice - this.currentMarket!.tickSize
+    const newSL = this.roundToTickSize(
+      this.position.side === 'LONG'
+        ? this.position.entryPrice + this.currentMarket!.tickSize
+        : this.position.entryPrice - this.currentMarket!.tickSize
+    )
     
     try {
-      // Cancel old SL
-      if (this.position.slOrderId) {
-        await this.mcpClient!.callTool({
-          name: 'cancel_order',
-          arguments: {
-            symbol: this.position.symbol,
-            order_id: this.position.slOrderId
-          }
-        })
-      }
-      
-      // Place new SL at breakeven
+      // Update SL to breakeven
       const result = await this.mcpClient!.callTool({
-        name: 'place_order',
+        name: 'set_stop_loss',
         arguments: {
           symbol: this.position.symbol,
-          side: this.position.side === 'LONG' ? 'SELL' : 'BUY',
-          order_type: 'STOP_MARKET',
-          quantity: this.position.size,
-          stop_price: newSL,
-          reduce_only: true
+          side: this.position.side,
+          stop_price: newSL
         }
       })
       
@@ -640,13 +674,10 @@ class LiquidityScalpingStrategy {
     
     try {
       await this.mcpClient!.callTool({
-        name: 'place_order',
+        name: 'close_position',
         arguments: {
           symbol: this.position.symbol,
-          side: this.position.side === 'LONG' ? 'SELL' : 'BUY',
-          order_type: 'MARKET',
-          quantity: exitSize,
-          reduce_only: true
+          percentage: percent * 100 // Convert to percentage
         }
       })
       
@@ -672,15 +703,28 @@ class LiquidityScalpingStrategy {
     // Position size = Risk Amount / SL Distance
     let positionSize = riskAmount / slDistance
     
-    // Round to min order size
-    const minSize = this.currentMarket!.minOrderSize
-    positionSize = Math.floor(positionSize / minSize) * minSize
-    
     // Apply max position limit (optional safety)
     const maxSize = this.accountBalance / this.currentMarket!.price * 2 // Max 2x leverage
     positionSize = Math.min(positionSize, maxSize)
     
+    // Round to min order size precision
+    const minSize = this.currentMarket!.minOrderSize
+    const precision = this.getPrecisionFromMinSize(minSize)
+    positionSize = parseFloat(positionSize.toFixed(precision))
+    
+    // Ensure at least min size
+    if (positionSize < minSize) {
+      positionSize = minSize
+    }
+    
     return positionSize
+  }
+
+  private getPrecisionFromMinSize(minSize: number): number {
+    // Convert minSize to string and count decimals
+    const str = minSize.toString()
+    const parts = str.split('.')
+    return parts.length > 1 ? parts[1].length : 0
   }
 
   private clearExitTimers() {

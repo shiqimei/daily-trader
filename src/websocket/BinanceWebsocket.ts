@@ -134,7 +134,13 @@ export class BinanceWebsocket {
 
     // Only emit if we have both bids and asks
     if (this.orderbook.bids.length > 0 && this.orderbook.asks.length > 0) {
-      this.onSnapshot(this.orderbook)
+      // Create a deep copy of the orderbook to avoid reference issues
+      const snapshot: OrderbookSnapshot = {
+        timestamp: this.orderbook.timestamp,
+        bids: this.orderbook.bids.map(bid => ({ ...bid })),
+        asks: this.orderbook.asks.map(ask => ({ ...ask }))
+      }
+      this.onSnapshot(snapshot)
     }
   }
 

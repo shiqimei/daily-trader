@@ -392,6 +392,29 @@ const binanceTools: Tool[] = [
       required: ['symbol', 'leverage']
     }
   },
+  // Order Management
+  {
+    name: 'place_order',
+    description: 'Place a generic order (buy/sell, market/limit)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', description: 'Trading pair symbol' },
+        side: { type: 'string', description: 'Order side', enum: ['BUY', 'SELL'] },
+        type: { type: 'string', description: 'Order type', enum: ['MARKET', 'LIMIT', 'STOP', 'STOP_MARKET'] },
+        quantity: { type: 'number', description: 'Order quantity' },
+        price: { type: 'number', description: 'Limit price (required for LIMIT orders)' },
+        stopPrice: { type: 'number', description: 'Stop price (required for STOP orders)' },
+        timeInForce: {
+          type: 'string',
+          description: 'Time in force',
+          enum: ['GTC', 'IOC', 'FOK', 'GTX']
+        },
+        reduceOnly: { type: 'boolean', description: 'Reduce only order' }
+      },
+      required: ['symbol', 'side', 'type', 'quantity']
+    }
+  },
   // Position Management
   {
     name: 'open_long',
@@ -404,6 +427,11 @@ const binanceTools: Tool[] = [
         price: {
           type: 'number',
           description: 'Limit price (optional, market order if not provided)'
+        },
+        timeInForce: {
+          type: 'string',
+          description: 'Time in force (GTC, IOC, FOK, GTX/Post-Only)',
+          enum: ['GTC', 'IOC', 'FOK', 'GTX']
         }
       },
       required: ['symbol', 'quantity']
@@ -420,6 +448,11 @@ const binanceTools: Tool[] = [
         price: {
           type: 'number',
           description: 'Limit price (optional, market order if not provided)'
+        },
+        timeInForce: {
+          type: 'string',
+          description: 'Time in force (GTC, IOC, FOK, GTX/Post-Only)',
+          enum: ['GTC', 'IOC', 'FOK', 'GTX']
         }
       },
       required: ['symbol', 'quantity']
@@ -530,6 +563,18 @@ const binanceTools: Tool[] = [
         symbol: { type: 'string', description: 'Trading pair symbol' }
       },
       required: ['symbol']
+    }
+  },
+  {
+    name: 'get_order',
+    description: 'Get order status',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', description: 'Trading pair symbol' },
+        orderId: { type: 'string', description: 'Order ID to query' }
+      },
+      required: ['symbol', 'orderId']
     }
   },
   {
@@ -1436,12 +1481,57 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
       }
 
+      // Order Management
+      case 'place_order': {
+        const { symbol, side, type, quantity, price, stopPrice, timeInForce, reduceOnly } = args as {
+          symbol: string
+          side: string
+          type: string
+          quantity: number
+          price?: number
+          stopPrice?: number
+          timeInForce?: string
+          reduceOnly?: boolean
+        }
+
+        const params: any = {
+          symbol,
+          side,
+          type,
+          quantity
+        }
+
+        if (type === 'LIMIT' && price) {
+          params.price = price
+          params.timeInForce = timeInForce || 'GTC'
+        }
+
+        if ((type === 'STOP' || type === 'STOP_MARKET') && stopPrice) {
+          params.stopPrice = stopPrice
+        }
+
+        if (reduceOnly) {
+          params.reduceOnly = true
+        }
+
+        const order = await makeRequest(config, '/fapi/v1/order', params, 'POST', true)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(order, null, 2)
+            }
+          ]
+        }
+      }
+
       // Position Management
       case 'open_long': {
-        const { symbol, quantity, price } = args as {
+        const { symbol, quantity, price, timeInForce } = args as {
           symbol: string
           quantity: number
           price?: number
+          timeInForce?: string
         }
         const params: any = {
           symbol,
@@ -1451,7 +1541,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
         if (price) {
           params.price = price
-          params.timeInForce = 'GTC'
+          params.timeInForce = timeInForce || 'GTC'
         }
 
         const order = await makeRequest(config, '/fapi/v1/order', params, 'POST', true)
@@ -1483,10 +1573,11 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
       }
 
       case 'open_short': {
-        const { symbol, quantity, price } = args as {
+        const { symbol, quantity, price, timeInForce } = args as {
           symbol: string
           quantity: number
           price?: number
+          timeInForce?: string
         }
         const params: any = {
           symbol,
@@ -1496,7 +1587,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
         if (price) {
           params.price = price
-          params.timeInForce = 'GTC'
+          params.timeInForce = timeInForce || 'GTC'
         }
 
         const order = await makeRequest(config, '/fapi/v1/order', params, 'POST', true)
@@ -2040,6 +2131,29 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                 null,
                 2
               )
+            }
+          ]
+        }
+      }
+
+      case 'get_order': {
+        const { symbol, orderId } = args as { symbol: string; orderId: string }
+        const result = await makeRequest(
+          config,
+          '/fapi/v1/order',
+          {
+            symbol,
+            orderId
+          },
+          'GET',
+          true
+        )
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
             }
           ]
         }

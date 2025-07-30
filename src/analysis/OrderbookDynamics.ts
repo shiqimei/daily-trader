@@ -19,6 +19,9 @@ export class OrderbookDynamics {
 
   private lastSignalTime: number = 0
   private readonly signalCooldown: number = 3000 // milliseconds
+  private lastPatternTime: Record<string, number> = {}
+  private readonly patternCooldown: number = 2000 // 2 seconds between same pattern
+  private readonly minDataPoints: number = 10 // Minimum data points before detecting patterns
 
   constructor(
     private readonly config: TradingConfig,
@@ -115,6 +118,7 @@ export class OrderbookDynamics {
     // Time difference in seconds
     const dt = (orderbooks[n - 1].timestamp - orderbooks[compareIndex].timestamp) / 1000
 
+
     // Need at least 0.5 seconds of data for meaningful velocity
     if (dt < 0.5) {
       return this.getEmptyDerivatives()
@@ -161,6 +165,12 @@ export class OrderbookDynamics {
 
   private detectPatterns(derivatives: Derivatives, orderbook: OrderbookSnapshot): DynamicPattern[] {
     const patterns: DynamicPattern[] = []
+    
+    // Need sufficient data points before detecting patterns
+    if (this.orderbookHistory.length < this.minDataPoints) {
+      return patterns
+    }
+    
     const avgLiquidity =
       (this.bidLiquidityHistory
         .toArray()
@@ -175,13 +185,29 @@ export class OrderbookDynamics {
     // Get current mid price for pattern detection
     const midPrice = this.calculateMidPrice(orderbook)
     const timestamp = orderbook.timestamp
+    
+    // Helper function to check pattern cooldown
+    const canAddPattern = (type: string, side: string): boolean => {
+      const key = `${type}_${side}`
+      const lastTime = this.lastPatternTime[key] || 0
+      if (timestamp - lastTime < this.patternCooldown) {
+        return false
+      }
+      return true
+    }
+    
+    const addPattern = (pattern: DynamicPattern) => {
+      const key = `${pattern.type}_${pattern.side}`
+      this.lastPatternTime[key] = timestamp
+      patterns.push(pattern)
+    }
 
     // Pattern 1: Liquidity Withdrawal
-    if (derivatives.askRate < -0.3 && derivatives.bidRate > -0.1) {
-      patterns.push({
+    if (derivatives.askRate < -0.05 && derivatives.bidRate > -0.02 && canAddPattern('LIQUIDITY_WITHDRAWAL', 'ASK')) {
+      addPattern({
         type: 'LIQUIDITY_WITHDRAWAL',
         side: 'ASK',
-        strength: Math.min(Math.abs(derivatives.askRate) * 100, 100),
+        strength: Math.min(Math.abs(derivatives.askRate) * 500, 100),
         confidence: 80,
         description: 'Sellers withdrawing liquidity rapidly',
         price: midPrice,
@@ -189,11 +215,11 @@ export class OrderbookDynamics {
       })
     }
 
-    if (derivatives.bidRate < -0.3 && derivatives.askRate > -0.1) {
-      patterns.push({
+    if (derivatives.bidRate < -0.05 && derivatives.askRate > -0.02 && canAddPattern('LIQUIDITY_WITHDRAWAL', 'BID')) {
+      addPattern({
         type: 'LIQUIDITY_WITHDRAWAL',
         side: 'BID',
-        strength: Math.min(Math.abs(derivatives.bidRate) * 100, 100),
+        strength: Math.min(Math.abs(derivatives.bidRate) * 500, 100),
         confidence: 80,
         description: 'Buyers withdrawing liquidity rapidly',
         price: midPrice,
@@ -202,11 +228,11 @@ export class OrderbookDynamics {
     }
 
     // Pattern 2: Liquidity Surge
-    if (derivatives.bidRate > 0.5 && Math.abs(derivatives.priceVelocity) < this.config.tickSize) {
-      patterns.push({
+    if (derivatives.bidRate > 0.1 && Math.abs(derivatives.priceVelocity) < this.config.tickSize && canAddPattern('LIQUIDITY_SURGE', 'BID')) {
+      addPattern({
         type: 'LIQUIDITY_SURGE',
         side: 'BID',
-        strength: Math.min(derivatives.bidRate * 50, 100),
+        strength: Math.min(derivatives.bidRate * 200, 100),
         confidence: 70,
         description: 'Buy orders surging but price stable',
         price: midPrice,
@@ -214,11 +240,11 @@ export class OrderbookDynamics {
       })
     }
 
-    if (derivatives.askRate > 0.5 && Math.abs(derivatives.priceVelocity) < this.config.tickSize) {
-      patterns.push({
+    if (derivatives.askRate > 0.1 && Math.abs(derivatives.priceVelocity) < this.config.tickSize && canAddPattern('LIQUIDITY_SURGE', 'ASK')) {
+      addPattern({
         type: 'LIQUIDITY_SURGE',
         side: 'ASK',
-        strength: Math.min(derivatives.askRate * 50, 100),
+        strength: Math.min(derivatives.askRate * 200, 100),
         confidence: 70,
         description: 'Sell orders surging but price stable',
         price: midPrice,
@@ -246,10 +272,11 @@ export class OrderbookDynamics {
 
     // Pattern 4: Market Maker Shift
     if (
-      Math.abs(derivatives.bidRate - derivatives.askRate) < 0.1 &&
-      Math.abs(derivatives.bidRate) > 0.2
+      Math.abs(derivatives.bidRate - derivatives.askRate) < 0.05 &&
+      Math.abs(derivatives.bidRate) > 0.03 &&
+      canAddPattern('MARKET_MAKER_SHIFT', 'BOTH')
     ) {
-      patterns.push({
+      addPattern({
         type: 'MARKET_MAKER_SHIFT',
         side: 'BOTH',
         strength: 60,
@@ -261,7 +288,7 @@ export class OrderbookDynamics {
     }
 
     // Pattern 5: Sweep Preparation
-    if (derivatives.askRate < -0.2 && derivatives.bidVelocity > avgLiquidity * 0.1) {
+    if (derivatives.askRate < -0.03 && derivatives.bidVelocity > avgLiquidity * 0.05) {
       patterns.push({
         type: 'SWEEP_PREP',
         side: 'ASK',

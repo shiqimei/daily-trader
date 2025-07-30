@@ -628,6 +628,14 @@ class LiquidityScalpingStrategy {
         this.currentMarket!.minOrderSize = parseFloat(lotSizeFilter.minQty)
         this.currentMarket!.stepSize = parseFloat(lotSizeFilter.stepSize)
         console.log(chalk.gray(`  Exchange info: minQty=${lotSizeFilter.minQty}, stepSize=${lotSizeFilter.stepSize}`))
+        
+        // Validate stepSize
+        if (isNaN(this.currentMarket!.stepSize) || this.currentMarket!.stepSize <= 0) {
+          console.warn(chalk.yellow(`  Warning: Invalid stepSize ${lotSizeFilter.stepSize}, using default 0.001`))
+          this.currentMarket!.stepSize = 0.001
+        }
+      } else {
+        console.warn(chalk.yellow('  Warning: LOT_SIZE filter not found in exchange info'))
       }
     } catch (error) {
       console.warn(chalk.yellow('Failed to get exchange info, using default min order size'))
@@ -821,8 +829,24 @@ class LiquidityScalpingStrategy {
 
   private roundToStepSize(quantity: number): number {
     const stepSize = this.currentMarket!.stepSize || 0.001
-    const precision = this.getPrecisionFromMinSize(stepSize)
-    return parseFloat((Math.floor(quantity / stepSize) * stepSize).toFixed(precision))
+    
+    // Round down to nearest step size
+    const rounded = Math.floor(quantity / stepSize) * stepSize
+    
+    // Determine precision from stepSize
+    // Handle scientific notation (e.g., 1e-8)
+    let precision = 0
+    const stepSizeStr = stepSize.toFixed(10).replace(/0+$/, '').replace(/\.$/, '')
+    const decimalIndex = stepSizeStr.indexOf('.')
+    if (decimalIndex !== -1) {
+      precision = stepSizeStr.length - decimalIndex - 1
+    }
+    
+    // Use a maximum of 8 decimal places
+    precision = Math.min(precision, 8)
+    
+    // Return with proper precision
+    return parseFloat(rounded.toFixed(precision))
   }
 
   private shouldCancelMarkerOrder(pattern: DynamicPattern): boolean {
@@ -1227,12 +1251,12 @@ class LiquidityScalpingStrategy {
     }
     
     const currentPrice = (orderbook.bids[0].price + orderbook.asks[0].price) / 2 // Mid price
-    const slPrice = this.position.slPrice
-    const breachedSL = this.position.side === 'LONG' 
+    const slPrice = this.position!.slPrice
+    const breachedSL = this.position!.side === 'LONG' 
       ? currentPrice <= slPrice 
       : currentPrice >= slPrice
     
-    if (breachedSL && !this.position.slOrderId) {
+    if (breachedSL && !this.position!.slOrderId) {
       console.log(chalk.red(`\n⚠️  Price ${currentPrice.toFixed(4)} breached SL ${slPrice.toFixed(4)}`))
       console.log(chalk.red(`🚨 EMERGENCY EXIT - No SL order active`))
       
@@ -1240,7 +1264,7 @@ class LiquidityScalpingStrategy {
         await this.mcpClient!.callTool({
           name: 'close_position',
           arguments: {
-            symbol: this.position.symbol,
+            symbol: this.position!.symbol,
             percentage: 100
           }
         })
@@ -1933,10 +1957,14 @@ class LiquidityScalpingStrategy {
     positionSize = Math.max(positionSize, minSize)
     
     // Round to step size
+    const rawSize = positionSize
     positionSize = this.roundToStepSize(positionSize)
     
-    // Log position size calculation
+    // Log position size calculation with debug info
     console.log(chalk.gray(`  Position size: ${positionSize} (notional: $${(positionSize * currentPrice).toFixed(2)})`))
+    if (this.currentMarket?.stepSize) {
+      console.log(chalk.gray(`  Debug: rawSize=${rawSize}, stepSize=${this.currentMarket.stepSize}, rounded=${positionSize}`))
+    }
     
     return positionSize
   }

@@ -36,6 +36,8 @@ class OrderbookTUI {
   
   private lastSignal: TradingSignal | null = null;
   private signalHistory: CircularBuffer<TradingSignal> = new CircularBuffer(10);
+  private tickSize: number = 0.01;
+  private pricePrecision: number = 2;
   
   constructor(private readonly symbol: string) {
     // Create screen
@@ -206,33 +208,52 @@ class OrderbookTUI {
     this.wsStatus = status;
   }
   
+  setTickSize(tickSize: number): void {
+    this.tickSize = tickSize;
+    // Calculate precision from tick size
+    const tickStr = tickSize.toString();
+    const decimalIndex = tickStr.indexOf('.');
+    if (decimalIndex === -1) {
+      this.pricePrecision = 0;
+    } else {
+      // Count non-zero decimals
+      const decimals = tickStr.substring(decimalIndex + 1);
+      this.pricePrecision = decimals.length;
+    }
+  }
+  
+  private formatPrice(price: number): string {
+    return price.toFixed(this.pricePrecision);
+  }
+  
   private updateOrderbook(orderbook: OrderbookSnapshot): void {
     const lines: string[] = [];
     
-    // Header with status
-    lines.push(`Time: ${new Date(orderbook.timestamp).toLocaleTimeString()} | Status: {${this.wsStatus === 'Connected' ? 'green' : 'yellow'}-fg}${this.wsStatus}{/}`);
+    // Header with status and tick size
+    lines.push(`Time: ${new Date(orderbook.timestamp).toLocaleTimeString()} | Status: {${this.wsStatus === 'Connected' ? 'green' : 'yellow'}-fg}${this.wsStatus}{/} | Tick: ${this.tickSize}`);
     lines.push('');
     
     // Asks (reversed)
     const displayAsks = orderbook.asks.slice(0, 5).reverse();
     displayAsks.forEach(ask => {
       const sizeBar = this.getSizeBar(ask.size, 20);
-      lines.push(`{red-fg}ASK ${ask.price.toFixed(2).padStart(10)} │ ${ask.size.toFixed(4).padStart(10)} ${sizeBar}{/}`);
+      lines.push(`{red-fg}ASK ${this.formatPrice(ask.price).padStart(10)} │ ${ask.size.toFixed(4).padStart(10)} ${sizeBar}{/}`);
     });
     
     // Spread
     if (orderbook.bids.length > 0 && orderbook.asks.length > 0) {
       const spread = orderbook.asks[0].price - orderbook.bids[0].price;
+      const spreadTicks = Math.round(spread / this.tickSize);
       const midPrice = (orderbook.asks[0].price + orderbook.bids[0].price) / 2;
       lines.push('{gray-fg}' + '─'.repeat(45) + '{/}');
-      lines.push(`{white-fg}SPREAD: ${spread.toFixed(2)} │ MID: ${midPrice.toFixed(2)}{/}`);
+      lines.push(`{white-fg}SPREAD: ${this.formatPrice(spread)} (${spreadTicks}t) │ MID: ${this.formatPrice(midPrice)}{/}`);
       lines.push('{gray-fg}' + '─'.repeat(45) + '{/}');
     }
     
     // Bids
     orderbook.bids.slice(0, 5).forEach(bid => {
       const sizeBar = this.getSizeBar(bid.size, 20);
-      lines.push(`{green-fg}BID ${bid.price.toFixed(2).padStart(10)} │ ${bid.size.toFixed(4).padStart(10)} ${sizeBar}{/}`);
+      lines.push(`{green-fg}BID ${this.formatPrice(bid.price).padStart(10)} │ ${bid.size.toFixed(4).padStart(10)} ${sizeBar}{/}`);
     });
     
     this.orderbookBox.setContent(lines.join('\n'));
@@ -242,8 +263,24 @@ class OrderbookTUI {
     const lines: string[] = [];
     
     const formatMetric = (name: string, value: number, unit: string, isPositive: boolean): string => {
+      // Handle NaN, Infinity, and undefined
+      if (!isFinite(value)) {
+        return `${name.padEnd(15)} │ {gray-fg}${'--'.padStart(12)}{/} ${unit}`;
+      }
+      
       const color = isPositive ? '{green-fg}' : '{red-fg}';
-      const formattedValue = Math.abs(value) < 0.01 ? value.toExponential(2) : value.toFixed(4);
+      let formattedValue: string;
+      
+      if (Math.abs(value) === 0) {
+        formattedValue = '0.0000';
+      } else if (Math.abs(value) < 0.01) {
+        formattedValue = value.toExponential(2);
+      } else if (Math.abs(value) > 1000) {
+        formattedValue = value.toExponential(2);
+      } else {
+        formattedValue = value.toFixed(4);
+      }
+      
       return `${name.padEnd(15)} │ ${color}${formattedValue.padStart(12)}{/} ${unit}`;
     };
     
@@ -268,7 +305,8 @@ class OrderbookTUI {
       patterns.forEach(pattern => {
         const color = pattern.strength > 70 ? '{red-fg}' : 
                       pattern.strength > 50 ? '{yellow-fg}' : '{gray-fg}';
-        lines.push(`${color}${pattern.type.padEnd(20)} │ ${pattern.side.padEnd(5)} │ ${pattern.strength}%{/}`);
+        const priceStr = pattern.price ? `@${this.formatPrice(pattern.price)}` : '';
+        lines.push(`${color}${pattern.type.padEnd(20)} │ ${pattern.side.padEnd(5)} │ ${pattern.strength}% ${priceStr}{/}`);
         lines.push(`{gray-fg}  └─ ${pattern.description}{/}`);
         lines.push('');
       });
@@ -293,8 +331,8 @@ class OrderbookTUI {
       lines.push(`${signalColor}Direction: ${this.lastSignal.direction}{/} │ Confidence: ${this.lastSignal.confidence}`);
       lines.push(`Strength: ${this.lastSignal.strength}% │ ${statusColor}Status: ${isActive ? 'ACTIVE' : 'EXPIRED'}{/}`);
       lines.push('');
-      lines.push(`Entry: ${this.lastSignal.entryPrice.toFixed(2)}`);
-      lines.push(`TP: ${this.lastSignal.takeProfit.toFixed(2)} │ SL: ${this.lastSignal.stopLoss.toFixed(2)}`);
+      lines.push(`Entry: ${this.formatPrice(this.lastSignal.entryPrice)}`);
+      lines.push(`TP: ${this.formatPrice(this.lastSignal.takeProfit)} │ SL: ${this.formatPrice(this.lastSignal.stopLoss)}`);
       lines.push('');
       lines.push(`{cyan-fg}Reason:{/} ${this.lastSignal.reason}`);
     } else {
@@ -319,7 +357,7 @@ class OrderbookTUI {
     lines.push('');
     
     // Stats
-    lines.push(`Average Spread: ${stats.avgSpread.toFixed(4)}`);
+    lines.push(`Average Spread: ${this.formatPrice(stats.avgSpread)}`);
     lines.push(`Velocity Imbalance: ${stats.velocityImbalance.toFixed(2)}`);
     
     if (stats.patternCounts && Object.keys(stats.patternCounts).length > 0) {
@@ -395,6 +433,9 @@ program
         symbolInfo.filters.find((f: any) => f.filterType === 'PRICE_FILTER')?.tickSize || '0.01'
       );
       
+      // Set tick size in TUI for proper price formatting
+      tui.setTickSize(tickSize);
+      
       const minOrderSize = parseFloat(
         symbolInfo.filters.find((f: any) => f.filterType === 'LOT_SIZE')?.minQty || '0.001'
       );
@@ -421,7 +462,9 @@ program
       // Snapshot buffer
       const snapshotBuffer = new CircularBuffer<OrderbookSnapshot>(300);
       let lastSnapshotTime = 0;
+      let lastDisplayTime = 0;
       let updateCount = 0;
+      const displayInterval = 50; // Update display every 50ms for smoother updates
       
       // Redirect console to TUI log
       const originalWarn = console.warn;
@@ -444,44 +487,75 @@ program
         }
       };
       
+      // Latest snapshot and analysis results
+      let latestSnapshot: OrderbookSnapshot | null = null;
+      let latestSignal: TradingSignal | null = null;
+      let latestDerivatives: Derivatives = {
+        bidVelocity: 0,
+        askVelocity: 0,
+        bidRate: 0,
+        askRate: 0,
+        spreadVelocity: 0,
+        priceVelocity: 0,
+        netFlow: 0,
+        imbalanceRatio: 0
+      };
+      let latestPatterns: DynamicPattern[] = [];
+      let latestStats: any = null;
+      let latestMarketState: MarketState | null = null;
+
       // Connect to WebSocket
       const ws = new BinanceOrderbookWS(
         symbol,
         (snapshot) => {
           const now = Date.now();
           
-          // Store snapshot every 100ms
+          // Always update latest snapshot for display
+          latestSnapshot = snapshot;
+          
+          // Always update dynamics with every snapshot
+          snapshotBuffer.push(snapshot);
+          const signal = dynamics.update(snapshot);
+          
+          // Get latest analysis results
+          latestDerivatives = dynamics.getCurrentDerivatives();
+          const newPatterns = dynamics.getCurrentPatterns();
+          
+          // Log new patterns as they're detected
+          newPatterns.forEach(pattern => {
+            // Check if this is a new pattern (not in latestPatterns)
+            const isNew = !latestPatterns.some(p => 
+              p.type === pattern.type && 
+              p.side === pattern.side && 
+              Math.abs(p.timestamp - pattern.timestamp) < 1000
+            );
+            
+            if (isNew) {
+              const color = pattern.strength > 70 ? 'error' : 
+                           pattern.strength > 50 ? 'warn' : 'info';
+              tui.log(`PATTERN: ${pattern.type} ${pattern.side} @${tui.formatPrice(pattern.price)} (${pattern.strength}%)`, color);
+            }
+          });
+          
+          latestPatterns = newPatterns;
+          latestStats = dynamics.getStats();
+          latestMarketState = dynamics.getMarketState();
+          
+          // Update tracking
           if (now - lastSnapshotTime >= 100) {
-            snapshotBuffer.push(snapshot);
             lastSnapshotTime = now;
             updateCount++;
             
-            // Update dynamics
-            const signal = dynamics.update(snapshot);
-            const derivatives = dynamics.getCurrentDerivatives();
-            const patterns = dynamics.getCurrentPatterns();
-            const stats = dynamics.getStats();
-            const marketState = dynamics.getMarketState();
-            
-            // Update display
-            tui.update({
-              orderbook: snapshot,
-              derivatives,
-              patterns,
-              signal,
-              stats,
-              marketState
-            });
-            
             // Log important events
             if (signal) {
-              tui.log(`NEW SIGNAL: ${signal.direction} @ ${signal.entryPrice.toFixed(2)} (${signal.confidence})`, 'warn');
+              latestSignal = signal;
+              tui.log(`NEW SIGNAL: ${signal.direction} @ ${tui.formatPrice(signal.entryPrice)} (${signal.confidence})`, 'warn');
             }
             
             // Log patterns periodically
-            if (updateCount % 50 === 0 && patterns.length > 0) {
-              const patternNames = patterns.map(p => p.type).join(', ');
-              tui.log(`Active patterns: ${patternNames}`, 'info');
+            if (updateCount % 50 === 0 && latestPatterns.length > 0) {
+              const patternInfo = latestPatterns.map(p => `${p.type}@${tui.formatPrice(p.price)}`).join(', ');
+              tui.log(`Active patterns: ${patternInfo}`, 'info');
             }
           }
         },
@@ -491,6 +565,32 @@ program
           tui.setWsStatus(status);
         }
       );
+
+      // Display update loop - runs independently at higher frequency
+      const displayTimer = setInterval(() => {
+        const now = Date.now();
+        if (now - lastDisplayTime >= displayInterval && latestSnapshot) {
+          lastDisplayTime = now;
+          
+          // Update display with latest data
+          tui.update({
+            orderbook: latestSnapshot,
+            derivatives: latestDerivatives,
+            patterns: latestPatterns,
+            signal: latestSignal,
+            stats: latestStats || {},
+            marketState: latestMarketState || {
+              regime: 'UNKNOWN',
+              volatility: 0,
+              liquidityScore: 0,
+              trendStrength: 0,
+              isVolatile: false,
+              isLiquid: false,
+              isTrending: false
+            }
+          });
+        }
+      }, 10); // Check every 10ms for smooth updates
       
       tui.log('Connecting to Binance WebSocket...', 'info');
       await ws.connect();
@@ -499,6 +599,7 @@ program
       // Handle graceful shutdown
       process.on('SIGINT', () => {
         tui.log('Shutting down...', 'warn');
+        clearInterval(displayTimer);
         ws.disconnect();
         // Restore console
         console.warn = originalWarn;

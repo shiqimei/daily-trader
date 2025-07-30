@@ -31,9 +31,10 @@ export class BinanceOrderbookWS {
   private maxReconnectAttempts: number = 5
   private reconnectDelay: number = 1000
   private lastResyncTime: number = 0
-  private resyncCooldown: number = 5000 // 5 seconds between resyncs
+  private resyncCooldown: number = 30000 // 30 seconds between resyncs
   private missedUpdateCount: number = 0
-  private maxMissedUpdates: number = 5 // Resync after 5 missed updates
+  private maxMissedUpdates: number = 100 // Resync after 100 missed updates
+  private updateBuffer: BinanceDepthUpdate[] = []
 
   constructor(
     private readonly symbol: string,
@@ -44,13 +45,16 @@ export class BinanceOrderbookWS {
   ) {}
 
   async connect(): Promise<void> {
-    this.onStatusChange?.('Fetching snapshot...')
-    // First get a snapshot from REST API
-    await this.fetchSnapshot()
-
-    // Then connect to WebSocket
+    // Connect to WebSocket first to start buffering updates
     this.onStatusChange?.('Connecting to WebSocket...')
     this.connectWebSocket()
+    
+    // Wait a bit for connection
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    
+    // Then fetch snapshot
+    this.onStatusChange?.('Fetching snapshot...')
+    await this.fetchSnapshot()
   }
 
   private async fetchSnapshot(): Promise<void> {
@@ -92,6 +96,9 @@ export class BinanceOrderbookWS {
       this.isInitialized = true
       this.isSyncing = false
       this.onSnapshot(this.orderbook)
+      
+      // Process any buffered updates
+      this.processBufferedUpdates()
     } catch (error) {
       this.isSyncing = false
       console.error('Failed to fetch orderbook snapshot:', error)
@@ -116,6 +123,14 @@ export class BinanceOrderbookWS {
     this.ws.on('message', (data: Buffer) => {
       try {
         const update: BinanceDepthUpdate = JSON.parse(data.toString())
+        
+        // If not initialized, buffer the update
+        if (!this.isInitialized || this.isSyncing) {
+          this.updateBuffer.push(update)
+          return
+        }
+        
+        // Process immediately
         this.processUpdate(update)
       } catch (error) {
         console.error('Failed to process WebSocket message:', error)
@@ -143,40 +158,70 @@ export class BinanceOrderbookWS {
     }, 30000)
   }
 
-  private processUpdate(update: BinanceDepthUpdate): void {
-    // Skip if not initialized or currently syncing
-    if (!this.isInitialized || this.isSyncing) {
+  private processBufferedUpdates(): void {
+    if (this.updateBuffer.length === 0) {
       return
     }
 
+    // Sort buffered updates by sequence
+    this.updateBuffer.sort((a, b) => a.U - b.U)
+
+    // Find the first update that can be applied
+    let startIndex = -1
+    for (let i = 0; i < this.updateBuffer.length; i++) {
+      const update = this.updateBuffer[i]
+      // The first update should have U <= lastUpdateId+1 <= u
+      if (update.U <= this.lastUpdateId + 1 && update.u >= this.lastUpdateId + 1) {
+        startIndex = i
+        break
+      }
+    }
+
+    if (startIndex >= 0) {
+      // Process updates from the valid starting point
+      for (let i = startIndex; i < this.updateBuffer.length; i++) {
+        this.processUpdate(this.updateBuffer[i])
+      }
+    }
+
+    // Clear buffer
+    this.updateBuffer = []
+  }
+
+  private processUpdate(update: BinanceDepthUpdate): void {
     // Skip old updates
     if (update.u <= this.lastUpdateId) {
       return
     }
 
     // Check if this update can be applied
-    // The first processed update should have U <= lastUpdateId+1 <= u
     if (update.U <= this.lastUpdateId + 1 && update.u >= this.lastUpdateId + 1) {
       // This update is valid, process it
       this.missedUpdateCount = 0 // Reset missed count on successful update
     } else if (update.U > this.lastUpdateId + 1) {
       // We missed some updates
-      this.missedUpdateCount++
+      const missedCount = update.U - this.lastUpdateId - 1
       
-      // Only log and resync if we've missed too many updates
-      if (this.missedUpdateCount >= this.maxMissedUpdates) {
-        const now = Date.now()
-        if (now - this.lastResyncTime > this.resyncCooldown) {
-          console.warn(`Too many missed updates (${this.missedUpdateCount}), resyncing...`)
-          this.isInitialized = false
-          this.lastResyncTime = now
-          this.fetchSnapshot()
+      // For initial connection, accept the gap and move forward
+      if (this.lastUpdateId > 0 && missedCount < 1000000) {
+        this.missedUpdateCount++
+        
+        // Only resync if we've consistently missed updates
+        if (this.missedUpdateCount >= this.maxMissedUpdates) {
+          const now = Date.now()
+          if (now - this.lastResyncTime > this.resyncCooldown) {
+            console.warn(`Missed ${this.missedUpdateCount} updates, resyncing...`)
+            this.isInitialized = false
+            this.lastResyncTime = now
+            this.updateBuffer = [] // Clear buffer on resync
+            this.fetchSnapshot()
+          }
+          return
         }
       }
-      return
-    } else {
-      // This update is too old, skip it
-      return
+      
+      // Accept this update and continue
+      this.lastUpdateId = update.U - 1
     }
 
     // Update bids

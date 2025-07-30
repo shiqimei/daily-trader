@@ -40,6 +40,8 @@ export interface DynamicPattern {
   strength: number;         // 0-100
   confidence: number;       // 0-100
   description: string;
+  price: number;           // Price at which pattern was detected
+  timestamp: number;       // When pattern was detected
 }
 
 export interface TradingConfig {

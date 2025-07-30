@@ -373,40 +373,20 @@ class LiquidityScalpingStrategy {
           const tickSize = this.currentMarket!.tickSize
           
           if (side === 'LONG') {
-            // For LONG: We want to sell at the highest price that won't cross the spread
-            // Start with ATR-based target
-            const atrBasedTP = entryPrice + (atrValue * 0.5)
+            // For LONG: TP should be best_bid + 1 tick
+            tpPrice = this.roundToTickSize(bestBid + tickSize)
             
-            // Ensure we're not crossing the spread - must be >= best_ask to be a maker order
-            if (atrBasedTP < bestAsk) {
-              // If ATR target is below best ask, place at best ask (join the queue)
-              tpPrice = this.roundToTickSize(bestAsk)
-            } else {
-              // If ATR target is above best ask, use it (will be in the book as maker)
-              tpPrice = this.roundToTickSize(atrBasedTP)
-            }
-            
-            // Also ensure minimum profit of at least 2 ticks
+            // Ensure minimum profit of at least 2 ticks
             const minTP = entryPrice + (tickSize * 2)
             tpPrice = Math.max(tpPrice, minTP)
             
           } else {
-            // For SHORT: We want to buy at the lowest price that won't cross the spread
-            // Start with ATR-based target
-            const atrBasedTP = entryPrice - (atrValue * 0.5)
+            // For SHORT: TP should be best_ask - 1 tick
+            tpPrice = this.roundToTickSize(bestAsk - tickSize)
             
-            // Ensure we're not crossing the spread - must be <= best_bid to be a maker order
-            if (atrBasedTP > bestBid) {
-              // If ATR target is above best bid, place at best bid (join the queue)
-              tpPrice = this.roundToTickSize(bestBid)
-            } else {
-              // If ATR target is below best bid, use it (will be in the book as maker)
-              tpPrice = this.roundToTickSize(atrBasedTP)
-            }
-            
-            // Also ensure minimum profit of at least 2 ticks
-            const minTP = entryPrice - (tickSize * 2)
-            tpPrice = Math.min(tpPrice, minTP)
+            // Ensure minimum profit of at least 2 ticks
+            const maxTP = entryPrice - (tickSize * 2)
+            tpPrice = Math.min(tpPrice, maxTP)
           }
         } else {
           // Fallback to ATR-based TP if no orderbook data
@@ -1059,40 +1039,20 @@ class LiquidityScalpingStrategy {
       const tickSize = this.currentMarket!.tickSize
       
       if (side === 'LONG') {
-        // For LONG: We want to sell at the highest price that won't cross the spread
-        // Start with ATR-based target
-        const atrBasedTP = this.markerOrder.price + (atrValue * 0.5)
+        // For LONG: TP should be best_bid + 1 tick
+        tpPrice = this.roundToTickSize(bestBid + tickSize)
         
-        // Ensure we're not crossing the spread - must be >= best_ask to be a maker order
-        if (atrBasedTP < bestAsk) {
-          // If ATR target is below best ask, place at best ask (join the queue)
-          tpPrice = this.roundToTickSize(bestAsk)
-        } else {
-          // If ATR target is above best ask, use it (will be in the book as maker)
-          tpPrice = this.roundToTickSize(atrBasedTP)
-        }
-        
-        // Also ensure minimum profit of at least 2 ticks
+        // Ensure minimum profit of at least 2 ticks
         const minTP = this.markerOrder.price + (tickSize * 2)
         tpPrice = Math.max(tpPrice, minTP)
         
       } else {
-        // For SHORT: We want to buy at the lowest price that won't cross the spread
-        // Start with ATR-based target
-        const atrBasedTP = this.markerOrder.price - (atrValue * 0.5)
+        // For SHORT: TP should be best_ask - 1 tick
+        tpPrice = this.roundToTickSize(bestAsk - tickSize)
         
-        // Ensure we're not crossing the spread - must be <= best_bid to be a maker order
-        if (atrBasedTP > bestBid) {
-          // If ATR target is above best bid, place at best bid (join the queue)
-          tpPrice = this.roundToTickSize(bestBid)
-        } else {
-          // If ATR target is below best bid, use it (will be in the book as maker)
-          tpPrice = this.roundToTickSize(atrBasedTP)
-        }
-        
-        // Also ensure minimum profit of at least 2 ticks
-        const minTP = this.markerOrder.price - (tickSize * 2)
-        tpPrice = Math.min(tpPrice, minTP)
+        // Ensure minimum profit of at least 2 ticks
+        const maxTP = this.markerOrder.price - (tickSize * 2)
+        tpPrice = Math.min(tpPrice, maxTP)
       }
     } else {
       // Fallback to ATR-based TP if no orderbook data
@@ -1468,39 +1428,23 @@ class LiquidityScalpingStrategy {
       
       // Recalculate TP to ensure it won't cross spread
       if (this.position.side === 'LONG') {
-        // For LONG: We want to sell, so TP must be >= best_ask to be a maker order
-        const atrBasedTP = this.position.entryPrice + (atrValue * 0.5)
+        // For LONG: TP should be best_bid + 1 tick (sell order on the bid side)
+        currentTPPrice = this.roundToTickSize(bestBid + tickSize)
         
-        if (atrBasedTP < bestAsk) {
-          // If ATR target is below best ask, place at best ask
-          currentTPPrice = this.roundToTickSize(bestAsk)
-        } else {
-          // Use ATR target
-          currentTPPrice = this.roundToTickSize(atrBasedTP)
-        }
-        
-        // Ensure minimum profit of 2 ticks
+        // Ensure minimum profit
         const minTP = this.position.entryPrice + (tickSize * 2)
         currentTPPrice = Math.max(currentTPPrice, minTP)
         
-        console.log(chalk.gray(`  LONG TP recalculated: ${currentTPPrice} (must be >= ${bestAsk} to avoid crossing)`))
+        console.log(chalk.gray(`  LONG TP recalculated: ${currentTPPrice} (best_bid + 1 tick)`))
       } else {
-        // For SHORT: We want to buy, so TP must be <= best_bid to be a maker order
-        const atrBasedTP = this.position.entryPrice - (atrValue * 0.5)
+        // For SHORT: TP should be best_ask - 1 tick (buy order on the ask side)
+        currentTPPrice = this.roundToTickSize(bestAsk - tickSize)
         
-        if (atrBasedTP > bestBid) {
-          // If ATR target is above best bid, place at best bid
-          currentTPPrice = this.roundToTickSize(bestBid)
-        } else {
-          // Use ATR target
-          currentTPPrice = this.roundToTickSize(atrBasedTP)
-        }
+        // Ensure minimum profit (price must be below entry for SHORT profit)
+        const maxTP = this.position.entryPrice - (tickSize * 2)
+        currentTPPrice = Math.min(currentTPPrice, maxTP)
         
-        // Ensure minimum profit of 2 ticks
-        const minTP = this.position.entryPrice - (tickSize * 2)
-        currentTPPrice = Math.min(currentTPPrice, minTP)
-        
-        console.log(chalk.gray(`  SHORT TP recalculated: ${currentTPPrice} (must be <= ${bestBid} to avoid crossing)`))
+        console.log(chalk.gray(`  SHORT TP recalculated: ${currentTPPrice} (best_ask - 1 tick)`))
       }
     }
     

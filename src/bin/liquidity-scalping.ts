@@ -81,6 +81,7 @@ interface MarketData {
   price: number
   tickSize: number
   minOrderSize: number
+  stepSize: number  // Add step size for quantity precision
   volumeUSDT24h: number
 }
 
@@ -102,6 +103,7 @@ class LiquidityScalpingStrategy {
   private lastPositionCheck: number = 0
   private positionCheckInterval: number = 2000 // Check position status every 2 seconds
   private lastTPSLCheck: number = 0
+  private lastMarketEvaluation: number = 0
   private tpslCheckInterval: number = 5000 // Check TP/SL orders every 5 seconds
   private lastOrderPlacement: number = 0 // Track when we last placed orders
   // Cleanup interval for dangling orders
@@ -276,11 +278,7 @@ class LiquidityScalpingStrategy {
           
           // Clear position and cancel all pending orders
           await this.cancelPendingOrders()
-          this.position = null
-          this.clearExitTimers()
-          this.state = 'ENTRY_HUNTING'
-          this.lastPatternCheckTime = Date.now() + 5000 // 5 second cooldown
-          console.log(chalk.cyan('🎯 Switching to ENTRY HUNTING mode'))
+          await this.switchToEntryHunting()
         }
         // Position size changed (partial exit)
         else if (Math.abs(posAmt) !== this.position.size && posAmt !== 0) {
@@ -294,11 +292,7 @@ class LiquidityScalpingStrategy {
         
         // Clear position and cancel all pending orders
         await this.cancelPendingOrders()
-        this.position = null
-        this.clearExitTimers()
-        this.state = 'ENTRY_HUNTING'
-        this.lastPatternCheckTime = Date.now() + 5000 // 5 second cooldown
-        console.log(chalk.cyan('🎯 Switching to ENTRY HUNTING mode'))
+        await this.switchToEntryHunting()
       }
     }
   }
@@ -478,6 +472,7 @@ class LiquidityScalpingStrategy {
           price: parseFloat(symbolInfo.last_price),
           tickSize: symbolInfo.tick_size,
           minOrderSize: 0.001,
+          stepSize: 0.001, // Default, will be updated from exchange info
           volumeUSDT24h: parseFloat(symbolInfo.quote_volume)
         }
       } else {
@@ -496,6 +491,7 @@ class LiquidityScalpingStrategy {
           price,
           tickSize: 0.0001, // Default tick size
           minOrderSize: 0.001,
+          stepSize: 0.001, // Default step size
           volumeUSDT24h: parseFloat(ticker.quoteVolume)
         }
       }
@@ -618,8 +614,12 @@ class LiquidityScalpingStrategy {
       price: parseFloat(selected.last_price),
       tickSize: selected.tick_size,
       minOrderSize: 0.001, // Default for most pairs
+      stepSize: 0.001, // Default step size
       volumeUSDT24h: parseFloat(selected.quote_volume)
     }
+    
+    // Mark market evaluation time
+    this.lastMarketEvaluation = Date.now()
     
     console.log(chalk.green(`✓ Selected market: ${this.currentMarket.symbol}`))
     console.log(chalk.gray(`  ATR: ${this.currentMarket.atrBps}bps ($${this.currentMarket.atrValue.toFixed(4)})`))
@@ -642,13 +642,93 @@ class LiquidityScalpingStrategy {
       
       const info = JSON.parse((result.content as any)[0].text)
       
-      // Update minOrderSize from exchange info
+      // Update minOrderSize and stepSize from exchange info
       const lotSizeFilter = info.filters.find((f: any) => f.filterType === 'LOT_SIZE')
       if (lotSizeFilter) {
         this.currentMarket!.minOrderSize = parseFloat(lotSizeFilter.minQty)
+        this.currentMarket!.stepSize = parseFloat(lotSizeFilter.stepSize)
+        console.log(chalk.gray(`  Exchange info: minQty=${lotSizeFilter.minQty}, stepSize=${lotSizeFilter.stepSize}`))
       }
     } catch (error) {
       console.warn(chalk.yellow('Failed to get exchange info, using default min order size'))
+    }
+  }
+
+  private async switchToEntryHunting() {
+    this.position = null
+    this.clearExitTimers()
+    this.state = 'ENTRY_HUNTING'
+    this.lastPatternCheckTime = Date.now() + 5000 // 5 second cooldown
+    console.log(chalk.cyan('🎯 Switching to ENTRY HUNTING mode'))
+    
+    // Only re-evaluate markets if it's been more than 5 minutes since last evaluation
+    const now = Date.now()
+    const timeSinceLastEval = now - this.lastMarketEvaluation
+    
+    if (timeSinceLastEval < 300000) { // 5 minutes
+      console.log(chalk.gray(`  Keeping current market ${this.currentMarket?.symbol} (evaluated ${Math.floor(timeSinceLastEval / 60000)}m ago)`))
+      return
+    }
+    
+    // Re-evaluate market opportunities
+    console.log(chalk.yellow('\n📊 Re-evaluating market opportunities...'))
+    
+    try {
+      // Clean up existing websocket
+      if (this.websocket) {
+        this.websocket.close()
+        this.websocket = null
+      }
+      
+      if (this.orderbookDynamics) {
+        this.orderbookDynamics.reset()
+        this.orderbookDynamics = null
+      }
+      
+      // Get fresh top symbols
+      const topSymbolsResult = await this.mcpClient!.callTool({
+        name: 'get_top_symbols',
+        arguments: {
+          minAtrBps: 40,
+          maxAtrBps: 80,
+          limit: 10
+        }
+      })
+      
+      const topSymbols = JSON.parse((topSymbolsResult.content as any)[0].text)
+      
+      if (!topSymbols.symbols || topSymbols.symbols.length === 0) {
+        console.log(chalk.red('No suitable symbols found'))
+        return
+      }
+      
+      // Select the first suitable symbol
+      const selected = topSymbols.symbols[0]
+      this.currentMarket = {
+        symbol: selected.symbol,
+        atrBps: Math.round(selected.atr_bps_5m),
+        atrValue: selected.atr_quote_5m,
+        price: parseFloat(selected.last_price),
+        tickSize: selected.tick_size,
+        minOrderSize: 0.001, // Default, will be updated from exchange info
+        stepSize: 0.001, // Default, will be updated from exchange info
+        volumeUSDT24h: parseFloat(selected.quote_volume)
+      }
+      
+      console.log(chalk.green(`\n✓ Selected new market: ${this.currentMarket.symbol}`))
+      console.log(chalk.gray(`  Price: $${this.currentMarket.price.toFixed(4)}`))
+      console.log(chalk.gray(`  ATR: ${this.currentMarket.atrBps.toFixed(0)}bps ($${this.currentMarket.atrValue.toFixed(4)})`))
+      console.log(chalk.gray(`  Tick: $${this.currentMarket.tickSize.toFixed(5)}`))
+      
+      // Initialize orderbook for the new symbol
+      await this.initializeOrderbook()
+      
+      // Update last evaluation time
+      this.lastMarketEvaluation = Date.now()
+      
+    } catch (error) {
+      console.error(chalk.red('Failed to re-evaluate markets:'), error)
+      // Continue with current market if re-evaluation fails
     }
   }
 
@@ -757,6 +837,12 @@ class LiquidityScalpingStrategy {
     const tickSize = this.currentMarket!.tickSize
     const precision = this.getPrecisionFromMinSize(tickSize)
     return parseFloat((Math.round(price / tickSize) * tickSize).toFixed(precision))
+  }
+
+  private roundToStepSize(quantity: number): number {
+    const stepSize = this.currentMarket!.stepSize || 0.001
+    const precision = this.getPrecisionFromMinSize(stepSize)
+    return parseFloat((Math.floor(quantity / stepSize) * stepSize).toFixed(precision))
   }
 
   private shouldCancelMarkerOrder(pattern: DynamicPattern): boolean {
@@ -1461,10 +1547,7 @@ class LiquidityScalpingStrategy {
             
             if (!activePosition) {
               console.log(chalk.green('✓ Position confirmed closed'))
-              this.position = null
-              this.clearExitTimers()
-              this.state = 'ENTRY_HUNTING'
-              console.log(chalk.cyan('\n🎯 Switching to ENTRY HUNTING mode'))
+              await this.switchToEntryHunting()
             }
           } catch (error) {
             console.error(chalk.red('Failed to check position status:'), error)
@@ -1676,10 +1759,7 @@ class LiquidityScalpingStrategy {
             
             if (!activePosition) {
               console.log(chalk.green('✓ Position confirmed closed'))
-              this.position = null
-              this.clearExitTimers()
-              this.state = 'ENTRY_HUNTING'
-              console.log(chalk.cyan('\n🎯 Switching to ENTRY HUNTING mode'))
+              await this.switchToEntryHunting()
             }
           } catch (error) {
             console.error(chalk.red('Failed to check position status:'), error)
@@ -1906,8 +1986,10 @@ class LiquidityScalpingStrategy {
     
     // Round to min order size precision
     const minSize = Math.max(this.currentMarket!.minOrderSize, minSizeForNotional)
-    const precision = this.getPrecisionFromMinSize(this.currentMarket!.minOrderSize)
-    positionSize = parseFloat(Math.max(positionSize, minSize).toFixed(precision))
+    positionSize = Math.max(positionSize, minSize)
+    
+    // Round to step size
+    positionSize = this.roundToStepSize(positionSize)
     
     // Log position size calculation
     console.log(chalk.gray(`  Position size: ${positionSize} (notional: $${(positionSize * currentPrice).toFixed(2)})`))

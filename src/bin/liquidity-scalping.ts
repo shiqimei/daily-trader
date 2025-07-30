@@ -103,6 +103,7 @@ class LiquidityScalpingStrategy {
   private positionCheckInterval: number = 2000 // Check position status every 2 seconds
   private lastTPSLCheck: number = 0
   private tpslCheckInterval: number = 5000 // Check TP/SL orders every 5 seconds
+  private lastOrderPlacement: number = 0 // Track when we last placed orders
   // Cleanup interval for dangling orders
   private cleanupInterval: NodeJS.Timeout | null = null
   
@@ -171,15 +172,40 @@ class LiquidityScalpingStrategy {
       arguments: {}
     })
     
-    const account = JSON.parse((result.content as any)[0].text)
+    const response = JSON.parse((result.content as any)[0].text)
     
-    // Check if we have USDC balance
-    const usdcAsset = account.assets?.find((a: any) => a.asset === 'USDC')
-    if (usdcAsset) {
-      this.accountBalance = parseFloat(usdcAsset.availableBalance || '0')
+    // Debug log the response structure
+    console.log(chalk.gray('Account response structure:', JSON.stringify(Object.keys(response))))
+    
+    // Handle different response structures
+    const account = response.account || response
+    
+    // Check if we have assets array
+    if (account.assets && Array.isArray(account.assets)) {
+      // Find USDC balance
+      const usdcAsset = account.assets.find((a: any) => a.asset === 'USDC')
+      if (usdcAsset) {
+        this.accountBalance = parseFloat(usdcAsset.availableBalance || usdcAsset.free || '0')
+      } else {
+        // Sum all available balances
+        this.accountBalance = account.assets.reduce((sum: number, asset: any) => {
+          return sum + parseFloat(asset.availableBalance || asset.free || '0')
+        }, 0)
+      }
+    } else if (account.balances && Array.isArray(account.balances)) {
+      // Alternative structure with balances array
+      const usdcBalance = account.balances.find((b: any) => b.asset === 'USDC')
+      if (usdcBalance) {
+        this.accountBalance = parseFloat(usdcBalance.free || usdcBalance.availableBalance || '0')
+      } else {
+        // Sum all free balances
+        this.accountBalance = account.balances.reduce((sum: number, balance: any) => {
+          return sum + parseFloat(balance.free || balance.availableBalance || '0')
+        }, 0)
+      }
     } else {
-      // Use general available balance as fallback
-      this.accountBalance = parseFloat(account.availableBalance || '0')
+      // Fallback to direct fields
+      this.accountBalance = parseFloat(account.availableBalance || account.totalWalletBalance || '0')
     }
     
     // Show more detailed balance info
@@ -463,6 +489,17 @@ class LiquidityScalpingStrategy {
 
   private async mainLoop() {
     while (this.state !== 'ERROR') {
+      // Check if balance is too low to trade
+      if (this.accountBalance < 5 && !this.position) {
+        console.log(chalk.red(`\n❌ Cannot trade with balance $${this.accountBalance.toFixed(2)} (minimum $5 required)`))
+        console.log(chalk.yellow('⏸️  Pausing for 30 seconds...'))
+        await new Promise(resolve => setTimeout(resolve, 30000))
+        
+        // Re-fetch account info
+        await this.getAccountInfo()
+        continue
+      }
+      
       // Double-check state consistency
       if (this.position && this.state !== 'POSITION_ACTIVE') {
         console.log(chalk.yellow('⚠️  State mismatch: Have position but not in POSITION_ACTIVE state'))
@@ -693,6 +730,11 @@ class LiquidityScalpingStrategy {
     }
     
     const positionSize = this.calculatePositionSize()
+    
+    // Skip if position size is 0 (insufficient balance)
+    if (positionSize === 0) {
+      return
+    }
     
     // Validate order price is reasonable (within 10% of current price)
     const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
@@ -1137,6 +1179,35 @@ class LiquidityScalpingStrategy {
   private async placeTPOrder() {
     if (!this.position) return
     
+    // First check if we actually need a new TP order
+    if (this.position.tpOrderId) {
+      try {
+        const orderCheck = await this.mcpClient!.callTool({
+          name: 'get_order',
+          arguments: {
+            symbol: this.position.symbol,
+            orderId: this.position.tpOrderId
+          }
+        })
+        const order = JSON.parse((orderCheck.content as any)[0].text)
+        
+        // If order exists and is active, check if price matches
+        if (order && (order.status === 'NEW' || order.status === 'PARTIALLY_FILLED')) {
+          const orderPrice = parseFloat(order.price)
+          const priceDiff = Math.abs(orderPrice - this.position.tpPrice)
+          
+          // If price is close enough (within 0.1%), keep the existing order
+          if (priceDiff / this.position.tpPrice < 0.001) {
+            return // Order is fine, no need to replace
+          } else {
+            console.log(chalk.yellow(`TP order price mismatch: ${orderPrice} vs ${this.position.tpPrice}, replacing...`))
+          }
+        }
+      } catch (error) {
+        // Order might not exist, continue to place new one
+      }
+    }
+    
     const operationKey = `tp_order_${this.position.symbol}`
     
     // Check exponential backoff
@@ -1239,6 +1310,7 @@ class LiquidityScalpingStrategy {
         this.position.tpOrderId = tpOrder.orderId.toString()
         console.log(chalk.green(`✓ TP order placed #${tpOrder.orderId} at ${this.position.tpPrice.toFixed(4)} (GTC)`))
         this.backoff.recordSuccess(operationKey) // Reset on success
+        this.lastOrderPlacement = Date.now() // Record order placement time
       } else {
         const tpOrder = JSON.parse(tpResponseText)
         if (!tpOrder.orderId) {
@@ -1250,6 +1322,7 @@ class LiquidityScalpingStrategy {
         this.position.tpOrderId = tpOrder.orderId.toString()
         console.log(chalk.green(`✓ TP order placed #${tpOrder.orderId} at ${this.position.tpPrice.toFixed(4)} (GTX)`))
         this.backoff.recordSuccess(operationKey) // Reset on success
+        this.lastOrderPlacement = Date.now() // Record order placement time
       }
     } catch (error) {
       console.error(chalk.red('Failed to place TP order:'), error)
@@ -1260,6 +1333,35 @@ class LiquidityScalpingStrategy {
   
   private async placeSLOrder() {
     if (!this.position) return
+    
+    // First check if we actually need a new SL order
+    if (this.position.slOrderId) {
+      try {
+        const orderCheck = await this.mcpClient!.callTool({
+          name: 'get_order',
+          arguments: {
+            symbol: this.position.symbol,
+            orderId: this.position.slOrderId
+          }
+        })
+        const order = JSON.parse((orderCheck.content as any)[0].text)
+        
+        // If order exists and is active, check if price matches
+        if (order && (order.status === 'NEW' || order.status === 'PARTIALLY_FILLED')) {
+          const orderStopPrice = parseFloat(order.stopPrice)
+          const priceDiff = Math.abs(orderStopPrice - this.position.slPrice)
+          
+          // If price is close enough (within 0.1%), keep the existing order
+          if (priceDiff / this.position.slPrice < 0.001) {
+            return // Order is fine, no need to replace
+          } else {
+            console.log(chalk.yellow(`SL order price mismatch: ${orderStopPrice} vs ${this.position.slPrice}, replacing...`))
+          }
+        }
+      } catch (error) {
+        // Order might not exist, continue to place new one
+      }
+    }
     
     const operationKey = `sl_order_${this.position.symbol}`
     
@@ -1349,6 +1451,39 @@ class LiquidityScalpingStrategy {
           return
         }
         
+        // Special handling for ReduceOnly rejection - might mean position closed
+        if (errorData.error && errorData.error.includes('ReduceOnly Order is rejected')) {
+          console.log(chalk.yellow('⚠️  ReduceOnly SL order rejected - checking if position closed...'))
+          
+          // Check current positions
+          try {
+            const posResult = await this.mcpClient!.callTool({
+              name: 'get_positions',
+              arguments: {}
+            })
+            
+            const posResponse = JSON.parse((posResult.content as any)[0].text)
+            const positions = posResponse.positions || []
+            
+            const activePosition = positions.find((p: any) => 
+              p.symbol === this.position!.symbol && 
+              parseFloat(p.positionAmt) !== 0
+            )
+            
+            if (!activePosition) {
+              console.log(chalk.green('✓ Position confirmed closed'))
+              this.position = null
+              this.clearExitTimers()
+              this.state = 'ENTRY_HUNTING'
+              console.log(chalk.cyan('\n🎯 Switching to ENTRY HUNTING mode'))
+            }
+          } catch (error) {
+            console.error(chalk.red('Failed to check position status:'), error)
+          }
+          
+          return
+        }
+        
         console.error(chalk.red('SL order placement failed:'), errorData.error)
         
         // Don't mark as having an order ID if it failed
@@ -1368,6 +1503,7 @@ class LiquidityScalpingStrategy {
       this.position.slOrderId = slOrder.orderId
       console.log(chalk.green(`✓ SL order placed #${slOrder.orderId} at ${this.position.slPrice.toFixed(4)} (STOP_MARKET)`))
       this.backoff.recordSuccess(operationKey) // Reset on success
+      this.lastOrderPlacement = Date.now() // Record order placement time
     } catch (error) {
       console.error(chalk.red('Failed to place SL order:'), error)
       this.position!.slOrderId = undefined
@@ -1534,6 +1670,12 @@ class LiquidityScalpingStrategy {
   }
 
   private calculatePositionSize(): number {
+    // Check if balance is too low
+    if (this.accountBalance < 5) {
+      console.log(chalk.red(`❌ Insufficient balance: $${this.accountBalance.toFixed(2)} (min $5 required)`))
+      return 0
+    }
+    
     // Get current price from orderbook
     const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
     if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0) {
@@ -1689,6 +1831,38 @@ class LiquidityScalpingStrategy {
     try {
       if (!this.position || !this.currentMarket) return
       
+      // Skip cleanup if we have both TP and SL orders tracked
+      if (this.position.tpOrderId && this.position.slOrderId) {
+        // Verify they still exist
+        try {
+          const tpCheck = await this.mcpClient!.callTool({
+            name: 'get_order',
+            arguments: {
+              symbol: this.position.symbol,
+              orderId: this.position.tpOrderId
+            }
+          })
+          const tpOrder = JSON.parse((tpCheck.content as any)[0].text)
+          
+          const slCheck = await this.mcpClient!.callTool({
+            name: 'get_order',
+            arguments: {
+              symbol: this.position.symbol,
+              orderId: this.position.slOrderId
+            }
+          })
+          const slOrder = JSON.parse((slCheck.content as any)[0].text)
+          
+          // If both orders exist and are active, no cleanup needed
+          if (tpOrder && (tpOrder.status === 'NEW' || tpOrder.status === 'PARTIALLY_FILLED') &&
+              slOrder && (slOrder.status === 'NEW' || slOrder.status === 'PARTIALLY_FILLED')) {
+            return
+          }
+        } catch (error) {
+          // One or both orders might not exist, continue with cleanup
+        }
+      }
+      
       // Get all open orders
       const result = await this.mcpClient!.callTool({
         name: 'get_open_orders',
@@ -1700,42 +1874,79 @@ class LiquidityScalpingStrategy {
       
       if (openOrders.length === 0) return
       
-      // Valid order IDs for current position
-      const validOrderIds: string[] = []
-      if (this.position.tpOrderId) validOrderIds.push(this.position.tpOrderId)
-      if (this.position.slOrderId) validOrderIds.push(this.position.slOrderId)
+      // Group orders by type
+      const tpOrders: any[] = []
+      const slOrders: any[] = []
+      const otherOrders: any[] = []
       
-      // Cancel any orders that aren't our TP/SL
-      let cancelledCount = 0
       for (const order of openOrders) {
-        if (!validOrderIds.includes(order.orderId.toString())) {
-          console.log(chalk.yellow(`  ⚠️  Cancelling dangling ${order.side} ${order.type} order #${order.orderId}`))
-          await this.mcpClient!.callTool({
-            name: 'cancel_order',
-            arguments: {
-              symbol: order.symbol,
-              orderId: order.orderId
-            }
-          }).catch(() => {})
-          cancelledCount++
+        
+        // Check both reduceOnly and closePosition fields (Binance may use either)
+        const isReduceOnly = order.reduceOnly || order.closePosition
+        
+        if (!isReduceOnly) {
+          // Non reduce-only orders are definitely not TP/SL
+          otherOrders.push(order)
+        } else if (order.type === 'LIMIT') {
+          // TP orders are reduce-only limit orders
+          // For LONG: TP is SELL, for SHORT: TP is BUY
+          const isTPSide = (this.position.side === 'LONG' && order.side === 'SELL') || 
+                          (this.position.side === 'SHORT' && order.side === 'BUY')
+          if (isTPSide) {
+            tpOrders.push(order)
+          } else {
+            otherOrders.push(order)
+          }
+        } else if (order.type === 'STOP_MARKET' || order.type === 'STOP') {
+          // SL orders are stop market orders
+          // For proper SL: LONG position has SELL stop, SHORT position has BUY stop
+          const isSLSide = (this.position.side === 'LONG' && order.side === 'SELL') || 
+                          (this.position.side === 'SHORT' && order.side === 'BUY')
+          if (isSLSide) {
+            slOrders.push(order)
+          } else {
+            otherOrders.push(order)
+          }
+        } else {
+          otherOrders.push(order)
         }
       }
       
-      if (cancelledCount > 0) {
-        console.log(chalk.gray(`  🧹 Cleaned up ${cancelledCount} dangling orders`))
+      // Cancel all non-TP/SL orders
+      for (const order of otherOrders) {
+        console.log(chalk.yellow(`  ⚠️  Cancelling non-TP/SL order: ${order.side} ${order.type} #${order.orderId}`))
+        await this.mcpClient!.callTool({
+          name: 'cancel_order',
+          arguments: {
+            symbol: order.symbol,
+            orderId: order.orderId
+          }
+        }).catch(() => {})
       }
       
-      // Also check for duplicate TP/SL orders
-      const tpOrders = openOrders.filter(o => o.type === 'LIMIT' && 
-        ((this.position!.side === 'LONG' && o.side === 'SELL') || 
-         (this.position!.side === 'SHORT' && o.side === 'BUY')))
-      const slOrders = openOrders.filter(o => o.type === 'STOP_MARKET')
-      
-      // Cancel duplicate TPs (keep the one we're tracking)
+      // Handle TP orders
       if (tpOrders.length > 1) {
-        console.log(chalk.yellow(`  ⚠️  Found ${tpOrders.length} TP orders, keeping only tracked one`))
+        console.log(chalk.yellow(`  ⚠️  Found ${tpOrders.length} TP orders, keeping best one`))
+        
+        // Keep the one closest to our desired TP price
+        let bestTP = tpOrders[0]
+        let bestDiff = Math.abs(parseFloat(bestTP.price) - this.position.tpPrice)
+        
         for (const order of tpOrders) {
-          if (order.orderId.toString() !== this.position.tpOrderId) {
+          const diff = Math.abs(parseFloat(order.price) - this.position.tpPrice)
+          if (diff < bestDiff) {
+            bestTP = order
+            bestDiff = diff
+          }
+        }
+        
+        // Update our tracked TP order ID
+        this.position.tpOrderId = bestTP.orderId.toString()
+        
+        // Cancel the rest
+        for (const order of tpOrders) {
+          if (order.orderId !== bestTP.orderId) {
+            console.log(chalk.yellow(`  ⚠️  Cancelling duplicate TP order #${order.orderId}`))
             await this.mcpClient!.callTool({
               name: 'cancel_order',
               arguments: {
@@ -1745,13 +1956,34 @@ class LiquidityScalpingStrategy {
             }).catch(() => {})
           }
         }
+      } else if (tpOrders.length === 1) {
+        // Update our tracked TP order ID to match the actual order
+        this.position.tpOrderId = tpOrders[0].orderId.toString()
       }
       
-      // Cancel duplicate SLs (keep the one we're tracking)
+      // Handle SL orders
       if (slOrders.length > 1) {
-        console.log(chalk.yellow(`  ⚠️  Found ${slOrders.length} SL orders, keeping only tracked one`))
+        console.log(chalk.yellow(`  ⚠️  Found ${slOrders.length} SL orders, keeping best one`))
+        
+        // Keep the one closest to our desired SL price
+        let bestSL = slOrders[0]
+        let bestDiff = Math.abs(parseFloat(bestSL.stopPrice) - this.position.slPrice)
+        
         for (const order of slOrders) {
-          if (order.orderId.toString() !== this.position.slOrderId) {
+          const diff = Math.abs(parseFloat(order.stopPrice) - this.position.slPrice)
+          if (diff < bestDiff) {
+            bestSL = order
+            bestDiff = diff
+          }
+        }
+        
+        // Update our tracked SL order ID
+        this.position.slOrderId = bestSL.orderId.toString()
+        
+        // Cancel the rest
+        for (const order of slOrders) {
+          if (order.orderId !== bestSL.orderId) {
+            console.log(chalk.yellow(`  ⚠️  Cancelling duplicate SL order #${order.orderId}`))
             await this.mcpClient!.callTool({
               name: 'cancel_order',
               arguments: {
@@ -1761,6 +1993,13 @@ class LiquidityScalpingStrategy {
             }).catch(() => {})
           }
         }
+      } else if (slOrders.length === 1) {
+        // Update our tracked SL order ID to match the actual order
+        this.position.slOrderId = slOrders[0].orderId.toString()
+      }
+      
+      if (otherOrders.length > 0) {
+        console.log(chalk.gray(`  🧹 Cleaned up ${otherOrders.length} non-TP/SL orders`))
       }
     } catch (error) {
       // Silently ignore cleanup errors

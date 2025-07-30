@@ -1,4 +1,4 @@
-import WebSocket from 'ws'
+import * as WebSocket from 'ws'
 
 export interface AccountUpdate {
   eventType: 'ACCOUNT_UPDATE'

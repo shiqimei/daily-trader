@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import blessed from 'blessed';
+import * as blessed from 'blessed';
 import { BinanceWebsocket } from '../websocket/BinanceWebsocket';
 import { OrderFlowImbalance } from '../analysis/OrderFlowImbalance';
 import { CircularBuffer } from '../utils/CircularBuffer';
@@ -16,7 +16,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio';
 import { BinanceUserDataWS, AccountUpdate, OrderUpdate } from '../websocket/BinanceUserDataWS';
 import { ExponentialBackoff } from '../utils/ExponentialBackoff';
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 import chalk from 'chalk';
 
 dotenv.config();
@@ -111,7 +111,7 @@ class OrderFlowMMTUI {
   private lastSignalTime: number = 0; // Track last signal time
   private signalCooldownMs: number = 1000; // Minimum time between signals
   
-  private log(message: string, type: 'info' | 'warn' | 'error' | 'success' = 'info') {
+  public log(message: string, type: 'info' | 'warn' | 'error' | 'success' = 'info') {
     const timestamp = new Date().toLocaleTimeString();
     let coloredMsg = message;
     switch(type) {
@@ -786,7 +786,7 @@ class OrderFlowMMTUI {
         this.tradingStats.lastTradeTime = Date.now();
         
         this.log(`Position opened: ${side} @ ${fillPrice}`, 'success');
-        this.log(`Target: SL @ ${this.position.slPrice.toFixed(this.pricePrecision)}, TP @ ${this.position.tpPrice.toFixed(this.pricePrecision)}`, 'info');
+        this.log(`Target: SL @ ${this.position.slPrice.toFixed(this.pricePrecision)}, TP @ ${this.position.tpPrice?.toFixed(this.pricePrecision) || 'N/A'}`, 'info');
         
         // Place both SL and TP orders immediately
         await this.placePositionOrders();
@@ -845,7 +845,7 @@ class OrderFlowMMTUI {
         this.log(`Found existing ${side} position @ ${entryPrice}`, 'warn');
         
         // Check if calculated prices are valid
-        if (this.position.slPrice <= 0 || this.position.tpPrice <= 0) {
+        if (this.position.slPrice <= 0 || !this.position.tpPrice || this.position.tpPrice <= 0) {
           this.log(`Invalid price calculation detected, using percentage-based targets`, 'warn');
           // Fallback to simple percentage-based targets
           if (side === 'LONG') {
@@ -857,7 +857,7 @@ class OrderFlowMMTUI {
           }
         }
         
-        this.log(`Setting targets: SL @ ${this.position.slPrice.toFixed(this.pricePrecision)}, TP @ ${this.position.tpPrice.toFixed(this.pricePrecision)}`, 'info');
+        this.log(`Setting targets: SL @ ${this.position.slPrice.toFixed(this.pricePrecision)}, TP @ ${this.position.tpPrice?.toFixed(this.pricePrecision) || 'N/A'}`, 'info');
         
         // Place both SL and TP orders if missing
         await this.placePositionOrders();
@@ -1359,7 +1359,7 @@ class OrderFlowMMTUI {
     lines.push(`{bold}Mode:{/bold} {green-fg}LIVE TRADING{/green-fg}`);
     
     // Show descriptive state
-    let stateDisplay = this.tradingState;
+    let stateDisplay: string = this.tradingState;
     let stateColor = 'white-fg';
     switch (this.tradingState) {
       case 'IDLE':

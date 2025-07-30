@@ -42,6 +42,57 @@ async function getSymbolInfo(config: BinanceConfig, symbol: string): Promise<any
   return symbolInfo
 }
 
+// Helper function to calculate ATR and return both basis points and quote value
+async function calculateAtr(
+  config: BinanceConfig,
+  symbol: string,
+  timeframe: Interval = '15m',
+  period: number = 14
+): Promise<{ bps: number; quote: number }> {
+  // Fetch enough klines to calculate ATR (period + 1 for first TR calculation)
+  const limit = period + 1
+  const klines = await makeRequest(config, '/fapi/v1/klines', {
+    symbol,
+    interval: timeframe,
+    limit
+  })
+
+  if (klines.length < limit) {
+    throw new Error(`Not enough data to calculate ATR for ${symbol}`)
+  }
+
+  // Calculate True Range for each candle (skip the first one)
+  const trueRanges: number[] = []
+  for (let i = 1; i < klines.length; i++) {
+    const current = klines[i]
+    const previous = klines[i - 1]
+    
+    const high = parseFloat(current[2])
+    const low = parseFloat(current[3])
+    const prevClose = parseFloat(previous[4])
+    
+    // True Range = max(high - low, abs(high - prevClose), abs(low - prevClose))
+    const tr = Math.max(
+      high - low,
+      Math.abs(high - prevClose),
+      Math.abs(low - prevClose)
+    )
+    trueRanges.push(tr)
+  }
+
+  // Calculate ATR as the average of True Ranges
+  const atr = trueRanges.reduce((sum, tr) => sum + tr, 0) / trueRanges.length
+  
+  // Get current price for basis points calculation
+  const currentPrice = parseFloat(klines[klines.length - 1][4]) // Last close price
+  const atrBasisPoints = (atr / currentPrice) * 10000
+
+  return {
+    bps: atrBasisPoints,
+    quote: atr
+  }
+}
+
 // Helper function to make API requests
 async function makeRequest(
   config: BinanceConfig,
@@ -190,20 +241,20 @@ const binanceTools: Tool[] = [
   {
     name: 'get_top_symbols',
     description:
-      'Get top USDC trading pairs optimized for day trading with volatility and volume filters',
+      'Get low-liquidity USDC pairs with orderbook gaps, filtered by 5-minute ATR and sorted by volume descending',
     inputSchema: {
       type: 'object',
       properties: {
         limit: { type: 'number', description: 'Number of top symbols to return', default: 10 },
-        minVolatility: {
+        minAtrBps: {
           type: 'number',
-          description: 'Minimum 24hr price change % (absolute)',
-          default: 2
+          description: 'Minimum 5-minute ATR in basis points',
+          default: 5
         },
-        maxVolatility: {
+        maxAtrBps: {
           type: 'number',
-          description: 'Maximum 24hr price change % (absolute)',
-          default: 15
+          description: 'Maximum 5-minute ATR in basis points',
+          default: 40
         }
       }
     }
@@ -675,11 +726,23 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
         const csvCompressed = compressKlinesToCsv(originalFormat)
 
+        // Calculate ATR for the requested interval
+        const atr = await calculateAtr(config, symbol, interval)
+
+        // Add ATR values to the response
+        const responseWithAtr = {
+          s: csvCompressed.s,
+          i: csvCompressed.i,
+          atr_bps: Math.round(atr.bps),
+          atr_quote: parseFloat(atr.quote.toFixed(4)),
+          d: csvCompressed.d
+        }
+
         return {
           content: [
             {
               type: 'text',
-              text: csvCompressed
+              text: JSON.stringify(responseWithAtr, null, 2)
             }
           ]
         }
@@ -712,7 +775,16 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             }))
           }
           const csvCompressed = compressKlinesToCsv(originalFormat)
-          results[interval] = csvCompressed.d // Just store the CSV data string
+          
+          // Calculate ATR for this interval
+          const atr = await calculateAtr(config, symbol, interval)
+          
+          // Store CSV data and both ATR values
+          results[interval] = {
+            atr_bps: Math.round(atr.bps),
+            atr_quote: parseFloat(atr.quote.toFixed(4)),
+            d: csvCompressed.d
+          }
         }
 
         return {
@@ -791,86 +863,84 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
       case 'get_top_symbols': {
         const {
           limit = 10,
-          minVolatility = 2,
-          maxVolatility = 15
+          minAtrBps = 5,
+          maxAtrBps = 40
         } = args as {
           limit?: number
-          minVolatility?: number
-          maxVolatility?: number
+          minAtrBps?: number
+          maxAtrBps?: number
         }
 
         // Get 24hr tickers first
         const tickers = await makeRequest(config, '/fapi/v1/ticker/24hr')
 
-        // Filter USDC pairs and apply day trading filters
-        const filteredPairs = tickers
+        // Pre-filter USDC pairs with minimum volume
+        const usdcPairs = tickers
           .filter((ticker: any) => {
-            if (!ticker.symbol.endsWith('USDC')) return false
-
-            const priceChange = Math.abs(parseFloat(ticker.priceChangePercent))
-            const currentVolume = parseFloat(ticker.quoteVolume)
-
-            // Day trading filters
-            return (
-              priceChange >= minVolatility && // Minimum volatility for quick moves
-              priceChange <= maxVolatility && // Maximum volatility to avoid extreme risk
-              currentVolume > 1000000 // Minimum absolute volume threshold (1M USDC)
-            )
+            return ticker.symbol.endsWith('USDC') && parseFloat(ticker.quoteVolume) > 1000000
           })
-          .map((ticker: any) => {
-            const priceChange = parseFloat(ticker.priceChangePercent)
-            const volatility = Math.abs(priceChange)
 
-            // Day trading score based on volatility and volume
-            const volatilityScore = volatility / 10 // 0-1.5 typical range
-            const volumeScore = Math.min(parseFloat(ticker.quoteVolume) / 10000000, 1) // Normalize by 10M
-            const dayTradingScore = volatilityScore * 0.7 + volumeScore * 0.3
-
-            return {
-              symbol: ticker.symbol,
-              volume: ticker.volume,
-              quoteVolume: ticker.quoteVolume,
-              priceChangePercent: ticker.priceChangePercent,
-              lastPrice: ticker.lastPrice,
-              volatility: volatility.toFixed(2),
-              dayTradingScore: dayTradingScore.toFixed(3)
-            }
-          })
-          .sort((a: any, b: any) => parseFloat(b.dayTradingScore) - parseFloat(a.dayTradingScore))
-          .slice(0, limit)
-
-        // Get 4-hour klines for each selected symbol
-        const symbolsWithKlines = await Promise.all(
-          filteredPairs.map(async (pair: any) => {
+        // Calculate ATR and check orderbook gaps for each symbol
+        const pairsWithAtrAndGap = await Promise.all(
+          usdcPairs.map(async (ticker: any) => {
             try {
-              const klines = await makeRequest(config, '/fapi/v1/klines', {
-                symbol: pair.symbol,
-                interval: '4h',
-                limit: 10
-              })
+              // Calculate 5m ATR
+              const atr5m = await calculateAtr(config, ticker.symbol, '5m')
+              const atrBps5m = Math.round(atr5m.bps)
 
-              // Convert to CSV format for maximum compression
-              const csvLines = klines
-                .map((kline: any[]) => {
-                  const date = new Date(parseInt(kline[0]))
-                  const dateStr = date.toISOString().slice(0, 16).replace('T', ' ')
-                  return `${dateStr},${kline[1]},${kline[4]},${kline[2]},${kline[3]},${kline[5]}`
+              // Check if ATR is within range
+              if (atrBps5m >= minAtrBps && atrBps5m <= maxAtrBps) {
+                // Get orderbook to check for gaps
+                const orderbook = await makeRequest(config, '/fapi/v1/depth', { 
+                  symbol: ticker.symbol, 
+                  limit: 5 
                 })
-                .join('\n')
-
-              return {
-                ...pair,
-                k4h: csvLines
+                
+                // Get symbol info for price precision
+                const symbolInfo = await getSymbolInfo(config, ticker.symbol)
+                const pricePrecision = symbolInfo.pricePrecision || 2
+                const tickSize = parseFloat(
+                  symbolInfo.filters.find((f: any) => f.filterType === 'PRICE_FILTER')?.tickSize || '0.01'
+                )
+                
+                if (orderbook.bids.length > 0 && orderbook.asks.length > 0) {
+                  const bestBid = parseFloat(orderbook.bids[0][0])
+                  const bestAsk = parseFloat(orderbook.asks[0][0])
+                  const spread = bestAsk - bestBid
+                  const spreadTicks = Math.round(spread / tickSize)
+                  
+                  // Only include if spread is more than 1 tick size (has gap)
+                  if (spreadTicks > 1) {
+                    return {
+                      symbol: ticker.symbol,
+                      volume: ticker.volume,
+                      quoteVolume: ticker.quoteVolume,
+                      priceChangePercent: ticker.priceChangePercent,
+                      lastPrice: ticker.lastPrice,
+                      atr_bps_5m: atrBps5m,
+                      atr_quote_5m: parseFloat(atr5m.quote.toFixed(4)),
+                      bestBid: bestBid.toFixed(pricePrecision),
+                      bestAsk: bestAsk.toFixed(pricePrecision),
+                      spread: spread.toFixed(pricePrecision),
+                      spreadTicks: spreadTicks,
+                      tickSize: tickSize
+                    }
+                  }
+                }
               }
+              return null
             } catch (error) {
-              console.error(`Failed to fetch klines for ${pair.symbol}:`, error)
-              return {
-                ...pair,
-                k4h: ''
-              }
+              console.error(`Failed to process ${ticker.symbol}:`, error)
+              return null
             }
           })
         )
+
+        // Filter out nulls and sort by volume descending
+        const filteredPairs = pairsWithAtrAndGap
+          .filter(pair => pair !== null)
+          .sort((a: any, b: any) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
+          .slice(0, limit)
 
         return {
           content: [
@@ -878,19 +948,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               type: 'text',
               text: JSON.stringify(
                 {
-                  topSymbols: symbolsWithKlines,
-                  count: symbolsWithKlines.length,
-                  filters: {
-                    minVolatility: `${minVolatility}%`,
-                    maxVolatility: `${maxVolatility}%`,
-                    minAbsoluteVolume: '1M USDC'
-                  },
-                  klinesInfo: {
-                    interval: '4h',
-                    limit: 10,
-                    description: 'Last 10 four-hour candles for each symbol'
-                  },
-                  timestamp: new Date().toISOString()
+                  count: filteredPairs.length,
+                  symbols: filteredPairs
                 },
                 null,
                 2

@@ -23,9 +23,6 @@ export interface CsvKlinesResponse {
   d: string;    // CSV data: "t,o,c,h,l,v\n..."
 }
 
-export interface ChartKlinesResponse extends CsvKlinesResponse {
-  c: string;    // chart data URL or 'chart' placeholder
-}
 
 export interface OriginalKline {
   openTime: string;

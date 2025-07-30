@@ -373,20 +373,16 @@ class LiquidityScalpingStrategy {
           const tickSize = this.currentMarket!.tickSize
           
           if (side === 'LONG') {
-            // For LONG: TP should be best_bid + 1 tick
-            tpPrice = this.roundToTickSize(bestBid + tickSize)
-            
-            // Ensure minimum profit of at least 2 ticks
-            const minTP = entryPrice + (tickSize * 2)
-            tpPrice = Math.max(tpPrice, minTP)
+            // For LONG: Use 0.5 ATR or minimum 20 bps profit
+            const atrTP = entryPrice + (atrValue * 0.5)
+            const minProfitTP = entryPrice * 1.002 // 20 bps minimum
+            tpPrice = this.roundToTickSize(Math.max(atrTP, minProfitTP))
             
           } else {
-            // For SHORT: TP should be best_ask - 1 tick
-            tpPrice = this.roundToTickSize(bestAsk - tickSize)
-            
-            // Ensure minimum profit of at least 2 ticks
-            const maxTP = entryPrice - (tickSize * 2)
-            tpPrice = Math.min(tpPrice, maxTP)
+            // For SHORT: Use 0.5 ATR or minimum 20 bps profit
+            const atrTP = entryPrice - (atrValue * 0.5)
+            const minProfitTP = entryPrice * 0.998 // 20 bps minimum
+            tpPrice = this.roundToTickSize(Math.min(atrTP, minProfitTP))
           }
         } else {
           // Fallback to ATR-based TP if no orderbook data
@@ -833,6 +829,11 @@ class LiquidityScalpingStrategy {
     // Round down to nearest step size
     const rounded = Math.floor(quantity / stepSize) * stepSize
     
+    // If stepSize is 1 or greater, we need integer quantities
+    if (stepSize >= 1) {
+      return Math.floor(rounded)
+    }
+    
     // Determine precision from stepSize
     // Handle scientific notation (e.g., 1e-8)
     let precision = 0
@@ -1063,20 +1064,16 @@ class LiquidityScalpingStrategy {
       const tickSize = this.currentMarket!.tickSize
       
       if (side === 'LONG') {
-        // For LONG: TP should be best_bid + 1 tick
-        tpPrice = this.roundToTickSize(bestBid + tickSize)
-        
-        // Ensure minimum profit of at least 2 ticks
-        const minTP = this.markerOrder.price + (tickSize * 2)
-        tpPrice = Math.max(tpPrice, minTP)
+        // For LONG: Use 0.5 ATR or minimum 20 bps profit
+        const atrTP = this.markerOrder.price + (atrValue * 0.5)
+        const minProfitTP = this.markerOrder.price * 1.002 // 20 bps minimum
+        tpPrice = this.roundToTickSize(Math.max(atrTP, minProfitTP))
         
       } else {
-        // For SHORT: TP should be best_ask - 1 tick
-        tpPrice = this.roundToTickSize(bestAsk - tickSize)
-        
-        // Ensure minimum profit of at least 2 ticks
-        const maxTP = this.markerOrder.price - (tickSize * 2)
-        tpPrice = Math.min(tpPrice, maxTP)
+        // For SHORT: Use 0.5 ATR or minimum 20 bps profit
+        const atrTP = this.markerOrder.price - (atrValue * 0.5)
+        const minProfitTP = this.markerOrder.price * 0.998 // 20 bps minimum
+        tpPrice = this.roundToTickSize(Math.min(atrTP, minProfitTP))
       }
     } else {
       // Fallback to ATR-based TP if no orderbook data
@@ -1452,23 +1449,19 @@ class LiquidityScalpingStrategy {
       
       // Recalculate TP to ensure it won't cross spread
       if (this.position.side === 'LONG') {
-        // For LONG: TP should be best_bid + 1 tick (sell order on the bid side)
-        currentTPPrice = this.roundToTickSize(bestBid + tickSize)
+        // For LONG: Use 0.5 ATR or minimum 20 bps profit
+        const atrTP = this.position.entryPrice + (atrValue * 0.5)
+        const minProfitTP = this.position.entryPrice * 1.002 // 20 bps minimum
+        currentTPPrice = this.roundToTickSize(Math.max(atrTP, minProfitTP))
         
-        // Ensure minimum profit
-        const minTP = this.position.entryPrice + (tickSize * 2)
-        currentTPPrice = Math.max(currentTPPrice, minTP)
-        
-        console.log(chalk.gray(`  LONG TP recalculated: ${currentTPPrice} (best_bid + 1 tick)`))
+        console.log(chalk.gray(`  LONG TP recalculated: ${currentTPPrice} (ATR-based with min 20bps)`))
       } else {
-        // For SHORT: TP should be best_ask - 1 tick (buy order on the ask side)
-        currentTPPrice = this.roundToTickSize(bestAsk - tickSize)
+        // For SHORT: Use 0.5 ATR or minimum 20 bps profit
+        const atrTP = this.position.entryPrice - (atrValue * 0.5)
+        const minProfitTP = this.position.entryPrice * 0.998 // 20 bps minimum
+        currentTPPrice = this.roundToTickSize(Math.min(atrTP, minProfitTP))
         
-        // Ensure minimum profit (price must be below entry for SHORT profit)
-        const maxTP = this.position.entryPrice - (tickSize * 2)
-        currentTPPrice = Math.min(currentTPPrice, maxTP)
-        
-        console.log(chalk.gray(`  SHORT TP recalculated: ${currentTPPrice} (best_ask - 1 tick)`))
+        console.log(chalk.gray(`  SHORT TP recalculated: ${currentTPPrice} (ATR-based with min 20bps)`))
       }
     }
     

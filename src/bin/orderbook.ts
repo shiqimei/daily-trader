@@ -411,7 +411,7 @@ program
 program
   .argument('<symbol>', 'Trading symbol (e.g., BTCUSDC, ETHUSDC)')
   .option('--depth <number>', 'Orderbook depth levels', '10')
-  .option('--window <number>', 'Analysis window size', '20')
+  .option('--window <number>', 'Analysis window size', '50')
   .option('--min-signal <number>', 'Minimum signal strength (0-100)', '60')
   .option('--update-speed <number>', 'Update speed in ms (100 or 1000)', '100')
   .action(async (symbol: string, options: any) => {
@@ -459,35 +459,11 @@ program
         parseInt(options.minSignal)
       );
       
-      // Snapshot buffer
-      const snapshotBuffer = new CircularBuffer<OrderbookSnapshot>(300);
-      let lastSnapshotTime = 0;
-      let lastDisplayTime = 0;
-      let updateCount = 0;
-      const displayInterval = 50; // Update display every 50ms for smoother updates
+      // Analysis state
+      let lastAnalysisTime = 0;
+      const analysisInterval = 100; // Run analysis every 100ms
       
-      // Redirect console to TUI log
-      const originalWarn = console.warn;
-      const originalError = console.error;
-      const originalLog = console.log;
-      
-      console.warn = (...args: any[]) => {
-        tui.log(args.join(' '), 'warn');
-      };
-      
-      console.error = (...args: any[]) => {
-        tui.log(args.join(' '), 'error');
-      };
-      
-      console.log = (...args: any[]) => {
-        // Skip WebSocket connection messages
-        const msg = args.join(' ');
-        if (!msg.includes('WebSocket') && !msg.includes('Connecting')) {
-          tui.log(msg, 'info');
-        }
-      };
-      
-      // Latest snapshot and analysis results
+      // Latest data for display
       let latestSnapshot: OrderbookSnapshot | null = null;
       let latestSignal: TradingSignal | null = null;
       let latestDerivatives: Derivatives = {
@@ -501,8 +477,13 @@ program
         imbalanceRatio: 0
       };
       let latestPatterns: DynamicPattern[] = [];
-      let latestStats: any = null;
-      let latestMarketState: MarketState | null = null;
+      let latestStats: any = {};
+      let latestMarketState: MarketState = {
+        regime: 'QUIET' as const,
+        liquidityScore: 0,
+        trendStrength: 0,
+        isVolatile: false
+      };
 
       // Connect to WebSocket
       const ws = new BinanceWebsocket(
@@ -513,50 +494,39 @@ program
           // Always update latest snapshot for display
           latestSnapshot = snapshot;
           
-          // Always update dynamics with every snapshot
-          snapshotBuffer.push(snapshot);
-          const signal = dynamics.update(snapshot);
-          
-          // Get latest analysis results
-          latestDerivatives = dynamics.getCurrentDerivatives();
-          const newPatterns = dynamics.getCurrentPatterns();
-          
-          // Log new patterns as they're detected
-          newPatterns.forEach(pattern => {
-            // Check if this is a new pattern (not in latestPatterns)
-            const isNew = !latestPatterns.some(p => 
-              p.type === pattern.type && 
-              p.side === pattern.side && 
-              Math.abs(p.timestamp - pattern.timestamp) < 1000
-            );
+          // Run analysis at controlled intervals
+          if (now - lastAnalysisTime >= analysisInterval) {
+            lastAnalysisTime = now;
             
-            if (isNew) {
-              const color = pattern.strength > 70 ? 'error' : 
-                           pattern.strength > 50 ? 'warn' : 'info';
-              tui.log(`PATTERN: ${pattern.type} ${pattern.side} @${tui.formatPrice(pattern.price)} (${pattern.strength}%)`, color);
-            }
-          });
-          
-          latestPatterns = newPatterns;
-          latestStats = dynamics.getStats();
-          latestMarketState = dynamics.getMarketState();
-          
-          // Update tracking
-          if (now - lastSnapshotTime >= 100) {
-            lastSnapshotTime = now;
-            updateCount++;
-            
-            // Log important events
+            // Update dynamics
+            const signal = dynamics.update(snapshot);
             if (signal) {
               latestSignal = signal;
               tui.log(`NEW SIGNAL: ${signal.direction} @ ${tui.formatPrice(signal.entryPrice)} (${signal.confidence})`, 'warn');
             }
             
-            // Log patterns periodically
-            if (updateCount % 50 === 0 && latestPatterns.length > 0) {
-              const patternInfo = latestPatterns.map(p => `${p.type}@${tui.formatPrice(p.price)}`).join(', ');
-              tui.log(`Active patterns: ${patternInfo}`, 'info');
-            }
+            // Get latest analysis results
+            latestDerivatives = dynamics.getCurrentDerivatives();
+            const newPatterns = dynamics.getCurrentPatterns();
+            
+            // Log new patterns
+            newPatterns.forEach(pattern => {
+              const isNew = !latestPatterns.some(p => 
+                p.type === pattern.type && 
+                p.side === pattern.side && 
+                Math.abs(p.timestamp - pattern.timestamp) < 1000
+              );
+              
+              if (isNew) {
+                const color = pattern.strength > 70 ? 'error' : 
+                             pattern.strength > 50 ? 'warn' : 'info';
+                tui.log(`PATTERN: ${pattern.type} ${pattern.side} @${tui.formatPrice(pattern.price)} (${pattern.strength}%)`, color);
+              }
+            });
+            
+            latestPatterns = newPatterns;
+            latestStats = dynamics.getStats();
+            latestMarketState = dynamics.getMarketState();
           }
         },
         parseInt(options.depth),
@@ -565,28 +535,20 @@ program
 
       // Display update loop - runs independently at higher frequency
       const displayTimer = setInterval(() => {
-        const now = Date.now();
-        if (now - lastDisplayTime >= displayInterval && latestSnapshot) {
-          lastDisplayTime = now;
-          
-          // Update display with latest data
+        if (latestSnapshot) {
           tui.update({
             orderbook: latestSnapshot,
             derivatives: latestDerivatives,
             patterns: latestPatterns,
             signal: latestSignal,
-            stats: latestStats || {},
-            marketState: latestMarketState || {
-              regime: 'QUIET' as const,
-              liquidityScore: 0,
-              trendStrength: 0,
-              isVolatile: false
-            }
+            stats: latestStats,
+            marketState: latestMarketState
           });
         }
-      }, 10); // Check every 10ms for smooth updates
+      }, 50); // Update display every 50ms for smooth UI
       
       tui.log('Connecting to Binance WebSocket...', 'info');
+      tui.setWsStatus('Connected');
       await ws.connect();
       tui.log('Connected successfully', 'info');
       
@@ -595,10 +557,6 @@ program
         tui.log('Shutting down...', 'warn');
         clearInterval(displayTimer);
         ws.disconnect();
-        // Restore console
-        console.warn = originalWarn;
-        console.error = originalError;
-        console.log = originalLog;
         setTimeout(() => {
           tui.destroy();
           process.exit(0);

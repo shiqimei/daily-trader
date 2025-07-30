@@ -26,26 +26,43 @@ export class BinanceOrderbookWS {
   }
   private lastUpdateId: number = 0
   private isInitialized: boolean = false
+  private isSyncing: boolean = false
   private reconnectAttempts: number = 0
   private maxReconnectAttempts: number = 5
   private reconnectDelay: number = 1000
+  private lastResyncTime: number = 0
+  private resyncCooldown: number = 5000 // 5 seconds between resyncs
+  private missedUpdateCount: number = 0
+  private maxMissedUpdates: number = 5 // Resync after 5 missed updates
 
   constructor(
     private readonly symbol: string,
     private readonly onSnapshot: (snapshot: OrderbookSnapshot) => void,
     private readonly depthLevels: number = 20,
-    private readonly updateSpeed: number = 100 // ms (100ms or 1000ms)
+    private readonly updateSpeed: number = 100, // ms (100ms or 1000ms)
+    private readonly onStatusChange?: (status: string) => void
   ) {}
 
   async connect(): Promise<void> {
+    this.onStatusChange?.('Fetching snapshot...')
     // First get a snapshot from REST API
     await this.fetchSnapshot()
 
     // Then connect to WebSocket
+    this.onStatusChange?.('Connecting to WebSocket...')
     this.connectWebSocket()
   }
 
   private async fetchSnapshot(): Promise<void> {
+    // Prevent multiple simultaneous syncs
+    if (this.isSyncing) {
+      return
+    }
+    
+    this.isSyncing = true
+    this.missedUpdateCount = 0
+    this.onStatusChange?.('Syncing orderbook...')
+    
     try {
       const response = await fetch(
         `https://fapi.binance.com/fapi/v1/depth?symbol=${this.symbol}&limit=${this.depthLevels}`
@@ -73,8 +90,10 @@ export class BinanceOrderbookWS {
       }
 
       this.isInitialized = true
+      this.isSyncing = false
       this.onSnapshot(this.orderbook)
     } catch (error) {
+      this.isSyncing = false
       console.error('Failed to fetch orderbook snapshot:', error)
       throw error
     }
@@ -91,6 +110,7 @@ export class BinanceOrderbookWS {
     this.ws.on('open', () => {
       console.log('WebSocket connected')
       this.reconnectAttempts = 0
+      this.onStatusChange?.('Connected')
     })
 
     this.ws.on('message', (data: Buffer) => {
@@ -104,10 +124,12 @@ export class BinanceOrderbookWS {
 
     this.ws.on('error', (error: Error) => {
       console.error('WebSocket error:', error)
+      this.onStatusChange?.('Error')
     })
 
     this.ws.on('close', () => {
       console.log('WebSocket disconnected')
+      this.onStatusChange?.('Disconnected')
       this.handleReconnect()
     })
 
@@ -122,15 +144,38 @@ export class BinanceOrderbookWS {
   }
 
   private processUpdate(update: BinanceDepthUpdate): void {
-    // Skip if update is out of order
-    if (!this.isInitialized || update.u <= this.lastUpdateId) {
+    // Skip if not initialized or currently syncing
+    if (!this.isInitialized || this.isSyncing) {
       return
     }
 
-    // Check if we missed any updates
-    if (update.U > this.lastUpdateId + 1) {
-      console.warn('Missed orderbook updates, re-syncing...')
-      this.fetchSnapshot()
+    // Skip old updates
+    if (update.u <= this.lastUpdateId) {
+      return
+    }
+
+    // Check if this update can be applied
+    // The first processed update should have U <= lastUpdateId+1 <= u
+    if (update.U <= this.lastUpdateId + 1 && update.u >= this.lastUpdateId + 1) {
+      // This update is valid, process it
+      this.missedUpdateCount = 0 // Reset missed count on successful update
+    } else if (update.U > this.lastUpdateId + 1) {
+      // We missed some updates
+      this.missedUpdateCount++
+      
+      // Only log and resync if we've missed too many updates
+      if (this.missedUpdateCount >= this.maxMissedUpdates) {
+        const now = Date.now()
+        if (now - this.lastResyncTime > this.resyncCooldown) {
+          console.warn(`Too many missed updates (${this.missedUpdateCount}), resyncing...`)
+          this.isInitialized = false
+          this.lastResyncTime = now
+          this.fetchSnapshot()
+        }
+      }
+      return
+    } else {
+      // This update is too old, skip it
       return
     }
 
@@ -199,6 +244,7 @@ export class BinanceOrderbookWS {
   private handleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('Max reconnection attempts reached')
+      this.onStatusChange?.('Connection failed')
       return
     }
 
@@ -208,6 +254,8 @@ export class BinanceOrderbookWS {
     console.log(
       `Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`
     )
+    
+    this.onStatusChange?.(`Reconnecting (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`)
 
     setTimeout(() => {
       this.connect()

@@ -1,6 +1,6 @@
 # Orderbook Dynamics CLI
 
-A real-time orderbook analyzer that monitors velocity, patterns, and generates trading signals based on orderbook dynamics.
+A real-time orderbook analyzer that monitors velocity, patterns, and generates trading signals based on orderbook dynamics. Available in two versions: standard CLI and TUI (Terminal User Interface).
 
 ## Features
 
@@ -18,15 +18,25 @@ A real-time orderbook analyzer that monitors velocity, patterns, and generates t
 
 ## Usage
 
+### Standard CLI (with flickering)
 ```bash
 # Basic usage
 npm run orderbook BTCUSDC
 
 # With options
 npm run orderbook ETHUSDC --depth 20 --window 30 --min-signal 70
+```
+
+### TUI Version (flicker-free, recommended)
+```bash
+# Basic usage
+npm run orderbook-tui BTCUSDC
+
+# With options
+npm run orderbook-tui ETHUSDC --depth 20 --window 30 --min-signal 70
 
 # Or directly with npx
-npx tsx src/bin/orderbook.ts BCHUSDC
+npx tsx src/bin/orderbook-tui.ts BCHUSDC
 ```
 
 ## Options
@@ -35,6 +45,23 @@ npx tsx src/bin/orderbook.ts BCHUSDC
 - `--window <number>`: Analysis window size (default: 20)
 - `--min-signal <number>`: Minimum signal strength 0-100 (default: 60)
 - `--update-speed <number>`: Update speed in ms - 100 or 1000 (default: 100)
+
+## TUI Layout
+
+The TUI version provides a fixed layout with 6 panels:
+
+```
+┌─ Orderbook ─────────────┬─ Velocity Metrics ──────┐
+│ Real-time bid/ask       │ Velocity calculations   │
+│ with spread display     │ and flow metrics        │
+├─ Detected Patterns ─────┼─ Trading Signal ────────┤
+│ Active patterns with    │ Current signal with     │
+│ confidence levels       │ entry/TP/SL levels      │
+├─ Statistics ────────────┼─ Log ───────────────────┤
+│ Market state and        │ Event log with          │
+│ pattern counts          │ timestamps              │
+└─────────────────────────┴─────────────────────────┘
+```
 
 ## Display Components
 

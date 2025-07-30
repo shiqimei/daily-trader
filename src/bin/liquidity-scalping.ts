@@ -22,8 +22,6 @@
  *      <> TP: we set TP to an atr_bps_5m above or below immediately. It should be a marker-only order.
  *      <> SL: we set SL to a half of an atr_bps_5m above or below immediately. It should be a market order.
  * 4. When we have an active position, keep monitoring the price:
- *      <> Move SL to BL once we have 5bps profit to cover the SL fees.
- *      <> When a position holds over 2 mins and we have 5+ bps, closed it using market order immediately to avoid risks.
  * 5. Loop above steps, if we are in entry-hunting mode, just to make sure we entry following rules listed above.
  *
  * Position Management:
@@ -62,7 +60,6 @@ interface Position {
   tpPrice: number
   slPrice: number
   unrealizedPnl?: number
-  breakEvenMoved?: boolean
 }
 
 // Market order types
@@ -105,10 +102,14 @@ class LiquidityScalpingStrategy {
   private slOrderCooldown: number = 30000 // 30 seconds cooldown between SL order attempts
   private lastPositionCheck: number = 0
   private positionCheckInterval: number = 2000 // Check position status every 2 seconds
-  private lastBreakEvenAttempt: number = 0
-  private breakEvenAttempts: number = 0
-  private breakEvenBaseCooldown: number = 3000 // 3 seconds base cooldown
-  private breakEvenMaxCooldown: number = 60000 // 60 seconds max cooldown
+  // Cleanup interval for dangling orders
+  private cleanupInterval: NodeJS.Timeout | null = null
+  
+  // Exponential backoff for TP order placement
+  private lastTPOrderAttempt: number = 0
+  private tpOrderAttempts: number = 0
+  private tpOrderBaseCooldown: number = 3000 // 3 seconds base cooldown
+  private tpOrderMaxCooldown: number = 60000 // 60 seconds max cooldown
 
   constructor() {}
 
@@ -204,6 +205,9 @@ class LiquidityScalpingStrategy {
     
     await this.userDataWS.connect()
     console.log(chalk.green(`✓ User data stream connected`))
+    
+    // Start periodic cleanup of dangling orders
+    this.startPeriodicCleanup()
   }
   
   private handleUserDataUpdate(data: AccountUpdate | OrderUpdate) {
@@ -425,7 +429,8 @@ class LiquidityScalpingStrategy {
         }
       })
       
-      const orders = JSON.parse((result.content as any)[0].text)
+      const response = JSON.parse((result.content as any)[0].text)
+      const orders = response.orders || []
       
       // Look for TP and SL orders
       for (const order of orders) {
@@ -854,7 +859,6 @@ class LiquidityScalpingStrategy {
     
     this.markerOrder = null
     this.positionStartTime = Date.now()
-    this.breakEvenAttempts = 0 // Reset break-even attempts for new position
     
     console.log(chalk.green(`\n✓ Position opened: ${side} at ${this.position.entryPrice}`))
     console.log(chalk.gray(`  TP: ${this.position.tpPrice.toFixed(4)} (+${(this.currentMarket!.atrBps * 0.5).toFixed(0)}bps)`))
@@ -1004,11 +1008,6 @@ class LiquidityScalpingStrategy {
     const pnlBps = this.calculatePnlBps()
     const holdTime = (Date.now() - this.position.entryTime) / 1000 / 60 // minutes
     
-    // Move SL to breakeven at 5bps profit
-    if (pnlBps >= 5 && !this.position.breakEvenMoved) {
-      await this.moveSLToBreakeven()
-    }
-    
     // Double-check position still exists
     if (!this.position) {
       this.state = 'ENTRY_HUNTING'
@@ -1115,6 +1114,18 @@ class LiquidityScalpingStrategy {
   private async placeTPOrder() {
     if (!this.position) return
     
+    const now = Date.now()
+    
+    // Check exponential backoff
+    const currentCooldown = Math.min(
+      this.tpOrderBaseCooldown * Math.pow(2, this.tpOrderAttempts),
+      this.tpOrderMaxCooldown
+    )
+    
+    if (now - this.lastTPOrderAttempt < currentCooldown) {
+      return // Still in cooldown
+    }
+    
     try {
       // Place TP order (maker limit order with GTX)
       const tpResult = await this.mcpClient!.callTool({
@@ -1132,6 +1143,20 @@ class LiquidityScalpingStrategy {
       
       const tpResponseText = (tpResult.content as any)[0].text
       
+      // Check for error response
+      if (tpResponseText.includes('error')) {
+        const errorData = JSON.parse(tpResponseText)
+        console.error(chalk.red('Failed to place TP order:'), errorData.error)
+        this.lastTPOrderAttempt = now
+        this.tpOrderAttempts++ // Increment for backoff
+        const nextRetrySeconds = Math.min(
+          this.tpOrderBaseCooldown * Math.pow(2, this.tpOrderAttempts) / 1000,
+          this.tpOrderMaxCooldown / 1000
+        )
+        console.log(chalk.gray(`  Will retry in ${nextRetrySeconds}s...`))
+        return
+      }
+      
       // Check for GTX rejection on TP order
       if (tpResponseText.includes('could not be executed as maker')) {
         // Retry with GTC
@@ -1147,16 +1172,47 @@ class LiquidityScalpingStrategy {
             reduceOnly: true
           }
         })
-        const tpOrder = JSON.parse((tpRetryResult.content as any)[0].text)
-        this.position.tpOrderId = tpOrder.orderId
+        const tpRetryResponseText = (tpRetryResult.content as any)[0].text
+        if (tpRetryResponseText.includes('error')) {
+          const errorData = JSON.parse(tpRetryResponseText)
+          console.error(chalk.red('Failed to place TP order (GTC):'), errorData.error)
+          this.lastTPOrderAttempt = now
+          this.tpOrderAttempts++
+          return
+        }
+        const tpOrder = JSON.parse(tpRetryResponseText)
+        if (!tpOrder.orderId) {
+          console.error(chalk.red('TP order response missing orderId'), tpOrder)
+          this.lastTPOrderAttempt = now
+          this.tpOrderAttempts++
+          return
+        }
+        this.position.tpOrderId = tpOrder.orderId.toString()
         console.log(chalk.green(`✓ TP order placed #${tpOrder.orderId} at ${this.position.tpPrice.toFixed(4)} (GTC)`))
+        this.tpOrderAttempts = 0 // Reset on success
       } else {
         const tpOrder = JSON.parse(tpResponseText)
-        this.position.tpOrderId = tpOrder.orderId
+        if (!tpOrder.orderId) {
+          console.error(chalk.red('TP order response missing orderId'), tpOrder)
+          this.lastTPOrderAttempt = now
+          this.tpOrderAttempts++
+          return
+        }
+        this.position.tpOrderId = tpOrder.orderId.toString()
         console.log(chalk.green(`✓ TP order placed #${tpOrder.orderId} at ${this.position.tpPrice.toFixed(4)} (GTX)`))
+        this.tpOrderAttempts = 0 // Reset on success
       }
+      this.lastTPOrderAttempt = now
     } catch (error) {
       console.error(chalk.red('Failed to place TP order:'), error)
+      this.lastTPOrderAttempt = now
+      this.tpOrderAttempts++ // Increment for backoff
+      
+      const nextRetrySeconds = Math.min(
+        this.tpOrderBaseCooldown * Math.pow(2, this.tpOrderAttempts) / 1000,
+        this.tpOrderMaxCooldown / 1000
+      )
+      console.log(chalk.gray(`  Will retry in ${nextRetrySeconds}s...`))
     }
   }
   
@@ -1382,119 +1438,6 @@ class LiquidityScalpingStrategy {
     return pnlPercent * 10000 // Convert to basis points
   }
 
-  private async moveSLToBreakeven() {
-    if (!this.position || this.position.breakEvenMoved) return
-    
-    // Calculate exponential backoff cooldown
-    const now = Date.now()
-    const currentCooldown = Math.min(
-      this.breakEvenBaseCooldown * Math.pow(2, this.breakEvenAttempts),
-      this.breakEvenMaxCooldown
-    )
-    
-    // Check cooldown
-    if (now - this.lastBreakEvenAttempt < currentCooldown) {
-      return // Still in cooldown
-    }
-    
-    // Get current price from orderbook
-    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
-    if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0) {
-      return
-    }
-    
-    const currentPrice = (orderbook.bids[0].price + orderbook.asks[0].price) / 2
-    
-    // Add enough to cover fees (maker 0.02% + taker 0.04% = 0.06% = 6bps)
-    const feeBuffer = this.position.entryPrice * 0.0006 // 6bps
-    const minBuffer = Math.max(feeBuffer, this.currentMarket!.tickSize * 2) // At least 2 ticks
-    
-    const newSL = this.roundToTickSize(
-      this.position.side === 'LONG'
-        ? this.position.entryPrice + minBuffer
-        : this.position.entryPrice - minBuffer
-    )
-    
-    // Check if price has already moved beyond the new SL
-    const wouldTrigger = this.position.side === 'LONG' 
-      ? currentPrice <= newSL
-      : currentPrice >= newSL
-      
-    if (wouldTrigger) {
-      // Only log once per cooldown period to avoid spam
-      if (now - this.lastBreakEvenAttempt >= currentCooldown) {
-        const nextRetrySeconds = Math.min(
-          this.breakEvenBaseCooldown * Math.pow(2, this.breakEvenAttempts + 1) / 1000,
-          this.breakEvenMaxCooldown / 1000
-        )
-        console.log(chalk.yellow(`⚠️  Cannot move SL to breakeven - price ${currentPrice.toFixed(4)} would trigger new SL ${newSL.toFixed(4)} (retry in ${nextRetrySeconds}s)`))
-      }
-      this.lastBreakEvenAttempt = now
-      this.breakEvenAttempts++ // Increment attempts for exponential backoff
-      return
-    }
-    
-    try {
-      // Cancel existing SL order
-      if (this.position.slOrderId) {
-        try {
-          await this.mcpClient!.callTool({
-            name: 'cancel_order',
-            arguments: {
-              symbol: this.position.symbol,
-              orderId: this.position.slOrderId
-            }
-          })
-          console.log(chalk.yellow(`✓ Cancelled old SL order #${this.position.slOrderId}`))
-        } catch (error) {
-          console.warn(chalk.yellow('Could not cancel old SL order, it may have been filled or expired'))
-        }
-      }
-      
-      // Place new SL at breakeven
-      const slResult = await this.mcpClient!.callTool({
-        name: 'place_order',
-        arguments: {
-          symbol: this.position.symbol,
-          side: this.position.side === 'LONG' ? 'SELL' : 'BUY',
-          type: 'STOP_MARKET',
-          quantity: this.position.size,
-          stopPrice: newSL,
-          reduceOnly: true
-        }
-      })
-      
-      const slResponseText = (slResult.content as any)[0].text
-      
-      // Check if it's an error response
-      if (slResponseText.includes('error')) {
-        const errorData = JSON.parse(slResponseText)
-        console.error(chalk.red('Failed to move SL to breakeven:'), errorData.error)
-        this.lastBreakEvenAttempt = now
-        this.breakEvenAttempts++ // Increment attempts on error
-        return
-      }
-      
-      const order = JSON.parse(slResponseText)
-      
-      if (!order.orderId) {
-        console.error(chalk.red('SL order response missing orderId'), order)
-        return
-      }
-      
-      this.position.slOrderId = order.orderId
-      this.position.slPrice = newSL
-      this.position.breakEvenMoved = true
-      
-      console.log(chalk.green(`✓ SL moved to breakeven #${order.orderId} at ${newSL.toFixed(4)}`))
-      this.lastBreakEvenAttempt = now
-      this.breakEvenAttempts = 0 // Reset attempts on success
-    } catch (error) {
-      console.error(chalk.red('Failed to move SL:'), error)
-      this.lastBreakEvenAttempt = now
-      this.breakEvenAttempts++ // Increment attempts on error
-    }
-  }
 
   private async exitPosition(percent: number) {
     if (!this.position) return
@@ -1663,6 +1606,180 @@ class LiquidityScalpingStrategy {
     }
   }
 
+  private startPeriodicCleanup() {
+    // Run cleanup every 30 seconds
+    this.cleanupInterval = setInterval(async () => {
+      await this.cleanupDanglingOrders()
+    }, 30000)
+    
+    // Run initial cleanup after 5 seconds
+    setTimeout(() => this.cleanupDanglingOrders(), 5000)
+  }
+  
+  private async cleanupDanglingOrders() {
+    try {
+      // Different cleanup logic based on state
+      if (this.state === 'POSITION_ACTIVE' && this.position) {
+        // When we have a position, cleanup any orders that aren't our TP/SL
+        await this.cleanupPositionOrders()
+      } else if (this.state === 'ENTRY_HUNTING') {
+        // When hunting for entry, cleanup orders from other symbols
+        await this.cleanupEntryHuntingOrders()
+      }
+    } catch (error) {
+      // Silently ignore cleanup errors
+    }
+  }
+  
+  private async cleanupPositionOrders() {
+    try {
+      if (!this.position || !this.currentMarket) return
+      
+      // Get all open orders
+      const result = await this.mcpClient!.callTool({
+        name: 'get_open_orders',
+        arguments: { symbol: this.currentMarket.symbol }
+      })
+      
+      const response = JSON.parse((result.content as any)[0].text)
+      const openOrders = response.orders || []
+      
+      if (openOrders.length === 0) return
+      
+      // Valid order IDs for current position
+      const validOrderIds: string[] = []
+      if (this.position.tpOrderId) validOrderIds.push(this.position.tpOrderId)
+      if (this.position.slOrderId) validOrderIds.push(this.position.slOrderId)
+      
+      // Cancel any orders that aren't our TP/SL
+      let cancelledCount = 0
+      for (const order of openOrders) {
+        if (!validOrderIds.includes(order.orderId.toString())) {
+          console.log(chalk.yellow(`  ⚠️  Cancelling dangling ${order.side} ${order.type} order #${order.orderId}`))
+          await this.mcpClient!.callTool({
+            name: 'cancel_order',
+            arguments: {
+              symbol: order.symbol,
+              orderId: order.orderId
+            }
+          }).catch(() => {})
+          cancelledCount++
+        }
+      }
+      
+      if (cancelledCount > 0) {
+        console.log(chalk.gray(`  🧹 Cleaned up ${cancelledCount} dangling orders`))
+      }
+      
+      // Also check for duplicate TP/SL orders
+      const tpOrders = openOrders.filter(o => o.type === 'LIMIT' && 
+        ((this.position!.side === 'LONG' && o.side === 'SELL') || 
+         (this.position!.side === 'SHORT' && o.side === 'BUY')))
+      const slOrders = openOrders.filter(o => o.type === 'STOP_MARKET')
+      
+      // Cancel duplicate TPs (keep the one we're tracking)
+      if (tpOrders.length > 1) {
+        console.log(chalk.yellow(`  ⚠️  Found ${tpOrders.length} TP orders, keeping only tracked one`))
+        for (const order of tpOrders) {
+          if (order.orderId.toString() !== this.position.tpOrderId) {
+            await this.mcpClient!.callTool({
+              name: 'cancel_order',
+              arguments: {
+                symbol: order.symbol,
+                orderId: order.orderId
+              }
+            }).catch(() => {})
+          }
+        }
+      }
+      
+      // Cancel duplicate SLs (keep the one we're tracking)
+      if (slOrders.length > 1) {
+        console.log(chalk.yellow(`  ⚠️  Found ${slOrders.length} SL orders, keeping only tracked one`))
+        for (const order of slOrders) {
+          if (order.orderId.toString() !== this.position.slOrderId) {
+            await this.mcpClient!.callTool({
+              name: 'cancel_order',
+              arguments: {
+                symbol: order.symbol,
+                orderId: order.orderId
+              }
+            }).catch(() => {})
+          }
+        }
+      }
+    } catch (error) {
+      // Silently ignore cleanup errors
+    }
+  }
+  
+  private async cleanupEntryHuntingOrders() {
+    try {
+      // Get all open orders
+      const result = await this.mcpClient!.callTool({
+        name: 'get_open_orders',
+        arguments: {}
+      })
+      
+      const response = JSON.parse((result.content as any)[0].text)
+      const openOrders = response.orders || []
+      
+      if (openOrders.length === 0) return
+      
+      // Group orders by symbol
+      const ordersBySymbol: Record<string, any[]> = {}
+      for (const order of openOrders) {
+        if (!ordersBySymbol[order.symbol]) {
+          ordersBySymbol[order.symbol] = []
+        }
+        ordersBySymbol[order.symbol].push(order)
+      }
+      
+      let totalCancelled = 0
+      
+      // Check each symbol
+      for (const [symbol, orders] of Object.entries(ordersBySymbol)) {
+        // If it's our current market and we have an active marker order
+        if (this.currentMarket?.symbol === symbol && this.markerOrder) {
+          // Cancel any orders that aren't our current marker order
+          for (const order of orders) {
+            if (order.orderId.toString() !== this.markerOrder.orderId) {
+              console.log(chalk.yellow(`  ⚠️  Cancelling dangling ${order.side} order #${order.orderId} at ${order.price}`))
+              await this.mcpClient!.callTool({
+                name: 'cancel_order',
+                arguments: {
+                  symbol: order.symbol,
+                  orderId: order.orderId
+                }
+              }).catch(() => {})
+              totalCancelled++
+            }
+          }
+        } else {
+          // Cancel all orders for symbols we're not actively trading
+          console.log(chalk.yellow(`  ⚠️  Found ${orders.length} dangling orders for ${symbol}, cancelling all...`))
+          
+          for (const order of orders) {
+            await this.mcpClient!.callTool({
+              name: 'cancel_order',
+              arguments: {
+                symbol: order.symbol,
+                orderId: order.orderId
+              }
+            }).catch(() => {})
+            totalCancelled++
+          }
+        }
+      }
+      
+      if (totalCancelled > 0) {
+        console.log(chalk.gray(`  🧹 Cleaned up ${totalCancelled} dangling orders`))
+      }
+    } catch (error) {
+      // Silently ignore cleanup errors
+    }
+  }
+
   private async cleanup() {
     console.log(chalk.gray('\nCleaning up...'))
     
@@ -1670,6 +1787,10 @@ class LiquidityScalpingStrategy {
     
     if (this.orderMonitorInterval) {
       clearInterval(this.orderMonitorInterval)
+    }
+    
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval)
     }
     
     if (this.websocket) {

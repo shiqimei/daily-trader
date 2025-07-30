@@ -357,6 +357,36 @@ const binanceTools: Tool[] = [
     }
   },
   {
+    name: 'create_listen_key',
+    description: 'Create a listen key for user data stream',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'ping_listen_key',
+    description: 'Keep-alive a listen key',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listenKey: { type: 'string', description: 'The listen key to keep alive' }
+      },
+      required: ['listenKey']
+    }
+  },
+  {
+    name: 'close_listen_key',
+    description: 'Close a listen key',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listenKey: { type: 'string', description: 'The listen key to close' }
+      },
+      required: ['listenKey']
+    }
+  },
+  {
     name: 'get_trades',
     description: 'Get recent trades',
     inputSchema: {
@@ -1379,6 +1409,44 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                 null,
                 2
               )
+            }
+          ]
+        }
+      }
+
+      case 'create_listen_key': {
+        const result = await makeRequest(config, '/fapi/v1/listenKey', {}, 'POST', true)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        }
+      }
+
+      case 'ping_listen_key': {
+        const { listenKey } = args as { listenKey: string }
+        await makeRequest(config, '/fapi/v1/listenKey', { listenKey }, 'PUT', true)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ status: 'ok', message: 'Listen key renewed' }, null, 2)
+            }
+          ]
+        }
+      }
+
+      case 'close_listen_key': {
+        const { listenKey } = args as { listenKey: string }
+        await makeRequest(config, '/fapi/v1/listenKey', { listenKey }, 'DELETE', true)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ status: 'ok', message: 'Listen key closed' }, null, 2)
             }
           ]
         }

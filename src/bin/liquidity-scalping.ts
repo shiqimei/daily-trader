@@ -29,7 +29,7 @@
  * Position Management:
  *  <> 30% Rule: Risk per trade never exceeds 30%, use calculate_position_size for position calculation
  *  <> TP/SL: Set immediately after entry, no exceptions
- *  <> R:R = ATR : 0.5ATR = 2:1
+ *  <> R:R = 0.5ATR : ATR = 0.5
  *  <> Position Limit: Maximum 1 concurrent position
  */
 
@@ -42,6 +42,7 @@ import utc from 'dayjs/plugin/utc.js'
 import { OrderbookDynamics } from '../analysis/OrderbookDynamics'
 import { DynamicPattern, OrderbookSnapshot, TradingConfig } from '../types/orderbook'
 import { BinanceWebsocket } from '../websocket/BinanceWebsocket'
+import { BinanceUserDataWS, AccountUpdate, OrderUpdate } from '../websocket/BinanceUserDataWS'
 
 dayjs.extend(utc)
 
@@ -54,7 +55,7 @@ interface Position {
   side: 'LONG' | 'SHORT'
   entryPrice: number
   size: number
-  originalSize: number  // Track original position size for partial exit calculations
+  originalSize: number  // Track original position size
   entryTime: number
   tpOrderId?: string
   slOrderId?: string
@@ -62,9 +63,6 @@ interface Position {
   slPrice: number
   unrealizedPnl?: number
   breakEvenMoved?: boolean
-  exits5min?: boolean   // Track if 5-minute exit was executed
-  exits30min?: boolean  // Track if 30-minute exit was executed
-  exits1hr?: boolean    // Track if 1-hour exit was executed
 }
 
 // Market order types
@@ -92,6 +90,7 @@ class LiquidityScalpingStrategy {
   private state: State = 'INITIALIZING'
   private mcpClient: Client | null = null
   private websocket: BinanceWebsocket | null = null
+  private userDataWS: BinanceUserDataWS | null = null
   private orderbookDynamics: OrderbookDynamics | null = null
   private position: Position | null = null
   private markerOrder: MarkerOrder | null = null
@@ -100,10 +99,16 @@ class LiquidityScalpingStrategy {
   private lastPatternCheckTime: number = 0
   private patternCheckInterval: number = 1000 // Check patterns only once per second
   private positionStartTime: number = 0
-  private exitTimeouts: NodeJS.Timeout[] = []
+  // private exitTimeouts: NodeJS.Timeout[] = [] // Removed - no time-based exits
   private orderMonitorInterval: NodeJS.Timeout | null = null
   private lastSLOrderAttempt: number = 0
   private slOrderCooldown: number = 30000 // 30 seconds cooldown between SL order attempts
+  private lastPositionCheck: number = 0
+  private positionCheckInterval: number = 2000 // Check position status every 2 seconds
+  private lastBreakEvenAttempt: number = 0
+  private breakEvenAttempts: number = 0
+  private breakEvenBaseCooldown: number = 3000 // 3 seconds base cooldown
+  private breakEvenMaxCooldown: number = 60000 // 60 seconds max cooldown
 
   constructor() {}
 
@@ -115,6 +120,9 @@ class LiquidityScalpingStrategy {
       await this.initializeMCPClient()
       await this.getAccountInfo()
       
+      // Initialize user data WebSocket for real-time position updates
+      await this.initializeUserDataWS()
+      
       // Check for existing positions
       const hasExistingPosition = await this.checkExistingPositions()
       
@@ -125,8 +133,8 @@ class LiquidityScalpingStrategy {
         this.state = 'SEARCHING_MARKET'
       }
       
-      // Set up periodic position sync check
-      setInterval(() => this.syncPositionState(), 5000) // Every 5 seconds
+      // No longer needed - using WebSocket for real-time updates
+      // setInterval(() => this.syncPositionState(), 5000)
       
       await this.mainLoop()
     } catch (error) {
@@ -179,6 +187,105 @@ class LiquidityScalpingStrategy {
     if (account.totalUnrealizedProfit && parseFloat(account.totalUnrealizedProfit) !== 0) {
       console.log(chalk.gray(`  Unrealized PnL: $${parseFloat(account.totalUnrealizedProfit).toFixed(2)}`))
     }
+    
+    // Warning for low balance but don't block trading
+    if (this.accountBalance < 20) {
+      console.log(chalk.yellow(`\n⚠️  Low balance: $${this.accountBalance.toFixed(2)} - position sizes will be limited by $5 minimum notional`))
+    }
+  }
+  
+  private async initializeUserDataWS() {
+    console.log(chalk.gray('Initializing user data stream...'))
+    
+    this.userDataWS = new BinanceUserDataWS(
+      this.mcpClient!,
+      (data) => this.handleUserDataUpdate(data)
+    )
+    
+    await this.userDataWS.connect()
+    console.log(chalk.green(`✓ User data stream connected`))
+  }
+  
+  private handleUserDataUpdate(data: AccountUpdate | OrderUpdate) {
+    if (data.eventType === 'ACCOUNT_UPDATE') {
+      // Handle account updates (positions, balances)
+      this.handleAccountUpdate(data)
+    } else if (data.eventType === 'ORDER_TRADE_UPDATE') {
+      // Handle order updates
+      this.handleOrderUpdate(data)
+    }
+  }
+  
+  private handleAccountUpdate(update: AccountUpdate) {
+    // Update account balance
+    const usdcBalance = update.balances.find(b => b.asset === 'USDC')
+    if (usdcBalance) {
+      const newBalance = parseFloat(usdcBalance.walletBalance)
+      if (newBalance !== this.accountBalance) {
+        console.log(chalk.gray(`  💰 Balance updated: $${newBalance.toFixed(2)}`))
+        this.accountBalance = newBalance
+      }
+    }
+    
+    // Check position updates
+    if (this.position && this.currentMarket) {
+      const positionUpdate = update.positions.find(p => p.symbol === this.currentMarket!.symbol)
+      
+      if (positionUpdate) {
+        const posAmt = parseFloat(positionUpdate.positionAmt)
+        
+        // Position closed
+        if (posAmt === 0 && this.position) {
+          const pnl = this.calculatePnlBps()
+          const unRealizedProfit = parseFloat(positionUpdate.unRealizedProfit)
+          
+          console.log(chalk.green(`\n✓ Position closed (PnL: ${pnl.toFixed(1)}bps, $${unRealizedProfit.toFixed(2)})`))
+          console.log(chalk.gray(`  Entry: ${this.position.entryPrice.toFixed(4)}`))
+          console.log(chalk.gray(`  Mark Price: ${positionUpdate.markPrice}`))
+          
+          // Clear position
+          this.position = null
+          this.clearExitTimers()
+          this.state = 'ENTRY_HUNTING'
+          this.lastPatternCheckTime = Date.now() + 5000 // 5 second cooldown
+        }
+        // Position size changed (partial exit)
+        else if (Math.abs(posAmt) !== this.position.size && posAmt !== 0) {
+          const oldSize = this.position.size
+          this.position.size = Math.abs(posAmt)
+          console.log(chalk.yellow(`  📊 Position size changed: ${oldSize} → ${this.position.size}`))
+        }
+      }
+    }
+  }
+  
+  private handleOrderUpdate(update: OrderUpdate) {
+    // Log important order events
+    if (update.orderStatus === 'FILLED') {
+      console.log(chalk.green(`  ✅ Order FILLED: ${update.side} ${update.originalQuantity} @ ${update.averagePrice}`))
+      
+      // Check if this is our TP order
+      if (this.position && update.orderId === parseInt(this.position.tpOrderId || '0')) {
+        console.log(chalk.green(`  🎯 Take Profit hit!`))
+      }
+      // Check if this is our SL order
+      else if (this.position && update.orderId === parseInt(this.position.slOrderId || '0')) {
+        console.log(chalk.red(`  🛑 Stop Loss hit!`))
+      }
+    } else if (update.orderStatus === 'CANCELED') {
+      // Check if important orders were cancelled
+      if (this.position) {
+        if (update.orderId === parseInt(this.position.tpOrderId || '0')) {
+          console.log(chalk.yellow(`  ⚠️  TP order cancelled`))
+          this.position.tpOrderId = undefined
+        } else if (update.orderId === parseInt(this.position.slOrderId || '0')) {
+          console.log(chalk.yellow(`  ⚠️  SL order cancelled`))
+          this.position.slOrderId = undefined
+        }
+      }
+    } else if (update.orderStatus === 'NEW') {
+      console.log(chalk.gray(`  📝 New order: ${update.side} ${update.originalQuantity} @ ${update.originalPrice}`))
+    }
   }
 
   private async checkExistingPositions(): Promise<boolean> {
@@ -224,13 +331,13 @@ class LiquidityScalpingStrategy {
           entryTime: Date.now() - 60000, // Assume 1 minute old if unknown
           tpPrice: this.roundToTickSize(
             side === 'LONG' 
-              ? entryPrice + atrValue
-              : entryPrice - atrValue
+              ? entryPrice + (atrValue * 0.5)  // TP at 0.5 ATR
+              : entryPrice - (atrValue * 0.5)
           ),
           slPrice: this.roundToTickSize(
             side === 'LONG'
-              ? entryPrice - (atrValue * 0.5)
-              : entryPrice + (atrValue * 0.5)
+              ? entryPrice - atrValue  // SL at 1 ATR
+              : entryPrice + atrValue
           ),
           unrealizedPnl: parseFloat(openPosition.unRealizedProfit)
         }
@@ -240,6 +347,8 @@ class LiquidityScalpingStrategy {
         
         // Check for existing TP/SL orders
         await this.checkExistingTPSLOrders()
+        
+        // Exit timers removed - using only TP/SL
         
         return true
       }
@@ -348,6 +457,15 @@ class LiquidityScalpingStrategy {
 
   private async mainLoop() {
     while (this.state !== 'ERROR') {
+      // Double-check state consistency
+      if (this.position && this.state !== 'POSITION_ACTIVE') {
+        console.log(chalk.yellow('⚠️  State mismatch: Have position but not in POSITION_ACTIVE state'))
+        this.state = 'POSITION_ACTIVE'
+      } else if (!this.position && this.state === 'POSITION_ACTIVE') {
+        console.log(chalk.yellow('⚠️  State mismatch: No position but in POSITION_ACTIVE state'))
+        this.state = 'ENTRY_HUNTING'
+      }
+      
       switch (this.state) {
         case 'SEARCHING_MARKET':
           await this.searchForMarket()
@@ -563,6 +681,18 @@ class LiquidityScalpingStrategy {
   private async placeMarkerOrder(signal: { side: 'BUY' | 'SELL', price: number }) {
     const positionSize = this.calculatePositionSize()
     
+    // Validate order price is reasonable (within 10% of current price)
+    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    if (orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0) {
+      const midPrice = (orderbook.bids[0].price + orderbook.asks[0].price) / 2
+      const priceRatio = signal.price / midPrice
+      
+      if (priceRatio < 0.9 || priceRatio > 1.1) {
+        console.log(chalk.yellow(`⚠️  Skipping order - price ${signal.price.toFixed(4)} is too far from market ${midPrice.toFixed(4)}`))
+        return
+      }
+    }
+    
     try {
       const result = await this.mcpClient!.callTool({
         name: 'place_order',
@@ -712,25 +842,26 @@ class LiquidityScalpingStrategy {
       entryTime: Date.now(),
       tpPrice: this.roundToTickSize(
         side === 'LONG' 
-          ? this.markerOrder.price + atrValue  // TP at 1 ATR (2R)
-          : this.markerOrder.price - atrValue
+          ? this.markerOrder.price + (atrValue * 0.5)  // TP at 0.5 ATR
+          : this.markerOrder.price - (atrValue * 0.5)
       ),
       slPrice: this.roundToTickSize(
         side === 'LONG'
-          ? this.markerOrder.price - (atrValue * 0.5)  // SL at 0.5 ATR (1R)
-          : this.markerOrder.price + (atrValue * 0.5)
+          ? this.markerOrder.price - atrValue  // SL at 1 ATR
+          : this.markerOrder.price + atrValue
       )
     }
     
     this.markerOrder = null
     this.positionStartTime = Date.now()
+    this.breakEvenAttempts = 0 // Reset break-even attempts for new position
     
     console.log(chalk.green(`\n✓ Position opened: ${side} at ${this.position.entryPrice}`))
-    console.log(chalk.gray(`  TP: ${this.position.tpPrice.toFixed(4)} (+${this.currentMarket!.atrBps}bps)`))
-    console.log(chalk.gray(`  SL: ${this.position.slPrice.toFixed(4)} (-${this.currentMarket!.atrBps * 0.5}bps)`))
+    console.log(chalk.gray(`  TP: ${this.position.tpPrice.toFixed(4)} (+${(this.currentMarket!.atrBps * 0.5).toFixed(0)}bps)`))
+    console.log(chalk.gray(`  SL: ${this.position.slPrice.toFixed(4)} (-${this.currentMarket!.atrBps.toFixed(0)}bps)`))
     
     await this.placeTPSLOrders()
-    this.setupExitTimers()
+    // Exit timers removed - using only TP/SL
     this.state = 'POSITION_ACTIVE'
   }
 
@@ -814,61 +945,11 @@ class LiquidityScalpingStrategy {
   }
 
   private setupExitTimers() {
-    // Clear any existing timers
-    this.clearExitTimers()
-    
-    // 5 minute timer - exit 50% if no movement
-    this.exitTimeouts.push(
-      setTimeout(() => this.checkTimeBasedExit(5, 0, 0.5), 5 * 60 * 1000)
-    )
-    
-    // 30 minute timer - exit 50% if profit < 1R
-    this.exitTimeouts.push(
-      setTimeout(() => this.checkTimeBasedExit(30, 0, 0.5), 30 * 60 * 1000)
-    )
-    
-    // 1 hour timer - exit 80% regardless
-    this.exitTimeouts.push(
-      setTimeout(() => this.checkTimeBasedExit(60, 0, 0.8), 60 * 60 * 1000)
-    )
+    // Time-based exits removed for simplicity
+    // Strategy now relies only on TP/SL
   }
 
-  private async checkTimeBasedExit(minutes: number, minProfitBps: number, exitPercent: number) {
-    if (!this.position) return
-    
-    const pnlBps = this.calculatePnlBps()
-    
-    // Special handling for different time-based rules
-    let shouldExit = false
-    let exitReason = ''
-    
-    if (minutes === 5 && !this.position.exits5min) {
-      // 5min rule: Exit if no movement (flat P&L)
-      if (Math.abs(pnlBps) < 2) { // Less than 2bps movement considered "no movement"
-        shouldExit = true
-        exitReason = 'no movement'
-        this.position.exits5min = true
-      }
-    } else if (minutes === 30 && !this.position.exits30min) {
-      // 30min rule: Exit if profit < 1R (1R = 0.5 ATR)
-      const oneRInBps = this.currentMarket!.atrBps * 0.5
-      if (pnlBps < oneRInBps) {
-        shouldExit = true
-        exitReason = `profit < 1R (${oneRInBps.toFixed(0)}bps)`
-        this.position.exits30min = true
-      }
-    } else if (minutes === 60 && !this.position.exits1hr) {
-      // 1hr rule: Exit regardless of P&L
-      shouldExit = true
-      exitReason = 'time limit'
-      this.position.exits1hr = true
-    }
-    
-    if (shouldExit) {
-      console.log(chalk.yellow(`\n⏰ ${minutes}min timer: Exiting ${exitPercent * 100}% of position (${exitReason}, PnL: ${pnlBps.toFixed(1)}bps)`))
-      await this.exitPosition(exitPercent)
-    }
-  }
+  // Removed - no longer using time-based exits
 
   private async managePosition() {
     if (!this.position) {
@@ -876,8 +957,13 @@ class LiquidityScalpingStrategy {
       return
     }
     
-    // First check if we've breached SL level without an order
-    const currentPrice = this.currentMarket!.price
+    // Get current price from orderbook
+    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0) {
+      return // No valid orderbook data
+    }
+    
+    const currentPrice = (orderbook.bids[0].price + orderbook.asks[0].price) / 2 // Mid price
     const slPrice = this.position.slPrice
     const breachedSL = this.position.side === 'LONG' 
       ? currentPrice <= slPrice 
@@ -909,28 +995,59 @@ class LiquidityScalpingStrategy {
     // Check if TP/SL orders are missing and place them
     await this.ensureTPSLOrders()
     
+    // Double-check position still exists after async operations
+    if (!this.position) {
+      this.state = 'ENTRY_HUNTING'
+      return
+    }
+    
     const pnlBps = this.calculatePnlBps()
-    const holdTime = (Date.now() - this.position!.entryTime) / 1000 / 60 // minutes
+    const holdTime = (Date.now() - this.position.entryTime) / 1000 / 60 // minutes
     
     // Move SL to breakeven at 5bps profit
-    if (pnlBps >= 5 && !this.position!.breakEvenMoved) {
+    if (pnlBps >= 5 && !this.position.breakEvenMoved) {
       await this.moveSLToBreakeven()
     }
     
-    // Exit if held > 2 mins and profit >= 5bps
-    if (holdTime > 2 && pnlBps >= 5) {
-      console.log(chalk.yellow(`\n⚡ Quick exit: ${pnlBps.toFixed(1)}bps profit after ${holdTime.toFixed(1)}min`))
-      await this.exitPosition(1.0)
+    // Double-check position still exists
+    if (!this.position) {
+      this.state = 'ENTRY_HUNTING'
+      return
     }
     
-    // Check position status periodically
-    await this.checkPositionStatus()
+    // Removed quick exit rule for simplicity
+    // Now only TP/SL will close positions
+    
+    // Check position status periodically (not too frequently)
+    const now = Date.now()
+    if (now - this.lastPositionCheck >= this.positionCheckInterval) {
+      this.lastPositionCheck = now
+      await this.checkPositionStatus()
+    }
   }
   
   private async ensureTPSLOrders() {
     if (!this.position) return
     
     try {
+      // Log current position state
+      const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+      if (orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0) {
+        const currentPrice = (orderbook.bids[0].price + orderbook.asks[0].price) / 2
+        const distanceToTP = this.position.side === 'LONG' 
+          ? ((this.position.tpPrice - currentPrice) / currentPrice * 10000).toFixed(1)
+          : ((currentPrice - this.position.tpPrice) / currentPrice * 10000).toFixed(1)
+        const distanceToSL = this.position.side === 'LONG'
+          ? ((currentPrice - this.position.slPrice) / currentPrice * 10000).toFixed(1)
+          : ((this.position.slPrice - currentPrice) / currentPrice * 10000).toFixed(1)
+          
+        // Only log position status every 10 seconds
+        const now = Date.now()
+        if (now - this.lastPositionCheck >= 10000) {
+          console.log(chalk.gray(`  📍 Current: ${currentPrice.toFixed(4)} | TP: ${distanceToTP}bps away | SL: ${distanceToSL}bps away`))
+        }
+      }
+      
       // Check if we need to place TP order
       if (!this.position.tpOrderId) {
         console.log(chalk.yellow('TP order missing, placing now...'))
@@ -1150,7 +1267,11 @@ class LiquidityScalpingStrategy {
   }
   
   private async checkPositionStatus() {
-    // Check if position exists by querying open positions
+    // Skip REST API checks - we now use WebSocket for real-time position updates
+    return
+    
+    // DEPRECATED: Old REST API implementation
+    /*
     try {
       const result = await this.mcpClient!.callTool({
         name: 'get_positions',
@@ -1162,8 +1283,71 @@ class LiquidityScalpingStrategy {
       const currentPosition = positions.find((p: any) => p.symbol === this.position?.symbol)
       
       if (!currentPosition || currentPosition.positionAmt === 0) {
-        // Position closed
-        console.log(chalk.green(`\n✓ Position closed`))
+        // Double-check this is a real closure, not an API glitch
+        const pnl = this.position ? this.calculatePnlBps() : 0
+        const holdTime = this.position ? (Date.now() - this.position.entryTime) / 1000 : 0 // seconds
+        
+        // If position is very new (< 5 seconds), likely an API glitch
+        if (this.position && holdTime < 5) {
+          console.log(chalk.yellow(`⚠️  API returned no position but position is only ${holdTime.toFixed(1)}s old - likely an error, keeping position`))
+          return
+        }
+        
+        // If we have negative PnL and neither TP nor SL was hit, this might be an error
+        if (this.position && pnl < 0) {
+          // Get current price from orderbook
+          const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+          const currentPrice = orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0 
+            ? (orderbook.bids[0].price + orderbook.asks[0].price) / 2 
+            : 0
+            
+          if (currentPrice > 0) {
+            // Check if price is between TP and SL (position should still be open)
+            const priceWithinRange = this.position.side === 'LONG'
+              ? currentPrice > this.position.slPrice && currentPrice < this.position.tpPrice
+              : currentPrice < this.position.slPrice && currentPrice > this.position.tpPrice
+              
+            if (priceWithinRange) {
+              console.log(chalk.yellow(`⚠️  API returned no position but price ${currentPrice.toFixed(4)} is within TP/SL range - likely an error, keeping position`))
+              return // Don't close the position
+            }
+          }
+        }
+        
+        // Position genuinely closed
+        // Get current price from orderbook
+        const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+        const closedPrice = orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0 
+          ? (orderbook.bids[0].price + orderbook.asks[0].price) / 2 
+          : this.currentMarket?.price || 0
+        
+        console.log(chalk.green(`\n✓ Position closed at ${closedPrice.toFixed(4)} (PnL: ${pnl.toFixed(1)}bps)`))
+        
+        // Log why it might have closed
+        if (this.position) {
+          console.log(chalk.gray(`  Entry: ${this.position.entryPrice.toFixed(4)}`))
+          console.log(chalk.gray(`  TP: ${this.position.tpPrice.toFixed(4)}`))
+          console.log(chalk.gray(`  SL: ${this.position.slPrice.toFixed(4)}`))
+          
+          // Check if TP or SL was hit
+          if (this.position.side === 'LONG') {
+            if (closedPrice >= this.position.tpPrice) {
+              console.log(chalk.green(`  ✓ Take Profit hit!`))
+            } else if (closedPrice <= this.position.slPrice) {
+              console.log(chalk.red(`  ✗ Stop Loss hit!`))
+            } else if (pnl < 0) {
+              console.log(chalk.yellow(`  ⚠️  Closed with loss but neither TP nor SL hit - manual close or liquidation?`))
+            }
+          } else {
+            if (closedPrice <= this.position.tpPrice) {
+              console.log(chalk.green(`  ✓ Take Profit hit!`))
+            } else if (closedPrice >= this.position.slPrice) {
+              console.log(chalk.red(`  ✗ Stop Loss hit!`))
+            } else if (pnl < 0) {
+              console.log(chalk.yellow(`  ⚠️  Closed with loss but neither TP nor SL hit - manual close or liquidation?`))
+            }
+          }
+        }
         
         // Cancel any pending orders before clearing position
         await this.cancelPendingOrders()
@@ -1178,12 +1362,19 @@ class LiquidityScalpingStrategy {
     } catch (error) {
       // Ignore errors in position checking
     }
+    */
   }
 
   private calculatePnlBps(): number {
     if (!this.position) return 0
     
-    const currentPrice = this.currentMarket!.price
+    // Get current price from orderbook
+    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0) {
+      return 0
+    }
+    
+    const currentPrice = (orderbook.bids[0].price + orderbook.asks[0].price) / 2 // Mid price
     const pnlPercent = this.position.side === 'LONG'
       ? (currentPrice - this.position.entryPrice) / this.position.entryPrice
       : (this.position.entryPrice - currentPrice) / this.position.entryPrice
@@ -1194,6 +1385,26 @@ class LiquidityScalpingStrategy {
   private async moveSLToBreakeven() {
     if (!this.position || this.position.breakEvenMoved) return
     
+    // Calculate exponential backoff cooldown
+    const now = Date.now()
+    const currentCooldown = Math.min(
+      this.breakEvenBaseCooldown * Math.pow(2, this.breakEvenAttempts),
+      this.breakEvenMaxCooldown
+    )
+    
+    // Check cooldown
+    if (now - this.lastBreakEvenAttempt < currentCooldown) {
+      return // Still in cooldown
+    }
+    
+    // Get current price from orderbook
+    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0) {
+      return
+    }
+    
+    const currentPrice = (orderbook.bids[0].price + orderbook.asks[0].price) / 2
+    
     // Add enough to cover fees (maker 0.02% + taker 0.04% = 0.06% = 6bps)
     const feeBuffer = this.position.entryPrice * 0.0006 // 6bps
     const minBuffer = Math.max(feeBuffer, this.currentMarket!.tickSize * 2) // At least 2 ticks
@@ -1203,6 +1414,25 @@ class LiquidityScalpingStrategy {
         ? this.position.entryPrice + minBuffer
         : this.position.entryPrice - minBuffer
     )
+    
+    // Check if price has already moved beyond the new SL
+    const wouldTrigger = this.position.side === 'LONG' 
+      ? currentPrice <= newSL
+      : currentPrice >= newSL
+      
+    if (wouldTrigger) {
+      // Only log once per cooldown period to avoid spam
+      if (now - this.lastBreakEvenAttempt >= currentCooldown) {
+        const nextRetrySeconds = Math.min(
+          this.breakEvenBaseCooldown * Math.pow(2, this.breakEvenAttempts + 1) / 1000,
+          this.breakEvenMaxCooldown / 1000
+        )
+        console.log(chalk.yellow(`⚠️  Cannot move SL to breakeven - price ${currentPrice.toFixed(4)} would trigger new SL ${newSL.toFixed(4)} (retry in ${nextRetrySeconds}s)`))
+      }
+      this.lastBreakEvenAttempt = now
+      this.breakEvenAttempts++ // Increment attempts for exponential backoff
+      return
+    }
     
     try {
       // Cancel existing SL order
@@ -1234,14 +1464,35 @@ class LiquidityScalpingStrategy {
         }
       })
       
-      const order = JSON.parse((slResult.content as any)[0].text)
+      const slResponseText = (slResult.content as any)[0].text
+      
+      // Check if it's an error response
+      if (slResponseText.includes('error')) {
+        const errorData = JSON.parse(slResponseText)
+        console.error(chalk.red('Failed to move SL to breakeven:'), errorData.error)
+        this.lastBreakEvenAttempt = now
+        this.breakEvenAttempts++ // Increment attempts on error
+        return
+      }
+      
+      const order = JSON.parse(slResponseText)
+      
+      if (!order.orderId) {
+        console.error(chalk.red('SL order response missing orderId'), order)
+        return
+      }
+      
       this.position.slOrderId = order.orderId
       this.position.slPrice = newSL
       this.position.breakEvenMoved = true
       
       console.log(chalk.green(`✓ SL moved to breakeven #${order.orderId} at ${newSL.toFixed(4)}`))
+      this.lastBreakEvenAttempt = now
+      this.breakEvenAttempts = 0 // Reset attempts on success
     } catch (error) {
       console.error(chalk.red('Failed to move SL:'), error)
+      this.lastBreakEvenAttempt = now
+      this.breakEvenAttempts++ // Increment attempts on error
     }
   }
 
@@ -1286,27 +1537,37 @@ class LiquidityScalpingStrategy {
   }
 
   private calculatePositionSize(): number {
+    // Get current price from orderbook
+    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0) {
+      return this.currentMarket!.minOrderSize
+    }
+    
+    const currentPrice = (orderbook.bids[0].price + orderbook.asks[0].price) / 2
+    
     // 30% risk rule
     const riskAmount = this.accountBalance * 0.30
     const atrValue = this.currentMarket!.atrValue
-    const slDistance = atrValue * 0.5 // SL is 0.5 ATR away
+    const slDistance = atrValue // SL is 1 ATR away
     
     // Position size = Risk Amount / SL Distance
     let positionSize = riskAmount / slDistance
     
     // Apply max position limit (optional safety)
-    const maxSize = this.accountBalance / this.currentMarket!.price * 2 // Max 2x leverage
+    const maxSize = this.accountBalance / currentPrice * 2 // Max 2x leverage
     positionSize = Math.min(positionSize, maxSize)
     
-    // Round to min order size precision
-    const minSize = this.currentMarket!.minOrderSize
-    const precision = this.getPrecisionFromMinSize(minSize)
-    positionSize = parseFloat(positionSize.toFixed(precision))
+    // Ensure minimum notional value ($5)
+    const minNotional = 5.0
+    const minSizeForNotional = minNotional / currentPrice
     
-    // Ensure at least min size
-    if (positionSize < minSize) {
-      positionSize = minSize
-    }
+    // Round to min order size precision
+    const minSize = Math.max(this.currentMarket!.minOrderSize, minSizeForNotional)
+    const precision = this.getPrecisionFromMinSize(this.currentMarket!.minOrderSize)
+    positionSize = parseFloat(Math.max(positionSize, minSize).toFixed(precision))
+    
+    // Log position size calculation
+    console.log(chalk.gray(`  Position size: ${positionSize} (notional: $${(positionSize * currentPrice).toFixed(2)})`))
     
     return positionSize
   }
@@ -1319,8 +1580,7 @@ class LiquidityScalpingStrategy {
   }
 
   private clearExitTimers() {
-    this.exitTimeouts.forEach(timeout => clearTimeout(timeout))
-    this.exitTimeouts = []
+    // No longer needed - time-based exits removed
   }
   
   private async syncPositionState() {
@@ -1339,7 +1599,14 @@ class LiquidityScalpingStrategy {
       
       // Fix state mismatches
       if (hasActivePosition && !this.position && this.state === 'ENTRY_HUNTING') {
-        console.log(chalk.yellow('⚠️  Found active position but bot thinks none exists - stopping entry hunting'))
+        const activePos = positions.find((p: any) => 
+          p.symbol === this.currentMarket?.symbol && p.positionAmt !== 0
+        )
+        console.log(chalk.yellow(`⚠️  Found active position but bot thinks none exists`))
+        console.log(chalk.gray(`  Symbol: ${activePos.symbol}`))
+        console.log(chalk.gray(`  Side: ${parseFloat(activePos.positionAmt) > 0 ? 'LONG' : 'SHORT'}`))
+        console.log(chalk.gray(`  Size: ${Math.abs(parseFloat(activePos.positionAmt))}`))
+        console.log(chalk.gray(`  Entry: ${activePos.entryPrice}`))
         this.state = 'SEARCHING_MARKET' // Reset to search for a new market
         this.markerOrder = null
       } else if (!hasActivePosition && this.position) {
@@ -1407,6 +1674,10 @@ class LiquidityScalpingStrategy {
     
     if (this.websocket) {
       this.websocket.disconnect()
+    }
+    
+    if (this.userDataWS) {
+      this.userDataWS.disconnect()
     }
     
     if (this.mcpClient) {

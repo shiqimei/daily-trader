@@ -1,6 +1,6 @@
 {
   "name": "ict-sr-confirmation-trading-system",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "dist/main.js",
   "type": "module",
   "scripts": {
@@ -10,6 +10,7 @@
     "trading-system-cli": "npx tsx src/bin/trading-system-cli.ts",
     "orderbook": "npx tsx src/bin/orderbook.ts",
     "orderbook-tui": "npx tsx src/bin/orderbook-tui.ts",
+    "liquidity-scalping": "npx tsx src/bin/liquidity-scalping.ts",
     "inspect": "npx @modelcontextprotocol/inspector@latest"
   },
   "packageManager": "pnpm@10.13.1",

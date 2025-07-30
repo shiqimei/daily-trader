@@ -1,5 +1,4 @@
 import WebSocket from 'ws'
-import chalk from 'chalk'
 
 export interface AccountUpdate {
   eventType: 'ACCOUNT_UPDATE'
@@ -66,12 +65,21 @@ export class BinanceUserDataWS {
   private reconnectDelay = 1000
   private isConnected = false
   private callback: UserDataCallback
+  private logCallback?: (message: string, level: 'info' | 'error' | 'warn') => void
 
   constructor(
     private mcpClient: any,
-    callback: UserDataCallback
+    callback: UserDataCallback,
+    logCallback?: (message: string, level: 'info' | 'error' | 'warn') => void
   ) {
     this.callback = callback
+    this.logCallback = logCallback
+  }
+
+  private log(message: string, level: 'info' | 'error' | 'warn' = 'info') {
+    if (this.logCallback) {
+      this.logCallback(message, level)
+    }
   }
 
   async connect(): Promise<void> {
@@ -91,12 +99,12 @@ export class BinanceUserDataWS {
       
       // Connect to WebSocket
       const wsUrl = `wss://fstream.binance.com/ws/${this.listenKey}`
-      console.log(chalk.gray('Connecting to User Data WebSocket...'))
+      this.log('Connecting to User Data WebSocket...', 'info')
       
       this.ws = new WebSocket(wsUrl)
       
       this.ws.on('open', () => {
-        console.log(chalk.green('✓ User Data WebSocket connected'))
+        this.log('✓ User Data WebSocket connected', 'info')
         this.isConnected = true
         this.reconnectAttempts = 0
         
@@ -157,16 +165,16 @@ export class BinanceUserDataWS {
             this.callback(update)
           }
         } catch (error) {
-          console.error(chalk.red('Error parsing user data message:'), error)
+          this.log(`Error parsing user data message: ${error}`, 'error')
         }
       })
       
       this.ws.on('error', (error) => {
-        console.error(chalk.red('User Data WebSocket error:'), error)
+        this.log(`User Data WebSocket error: ${error}`, 'error')
       })
       
       this.ws.on('close', () => {
-        console.log(chalk.yellow('User Data WebSocket disconnected'))
+        this.log('User Data WebSocket disconnected', 'warn')
         this.isConnected = false
         
         if (this.pingInterval) {
@@ -177,13 +185,13 @@ export class BinanceUserDataWS {
         // Attempt to reconnect
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
           this.reconnectAttempts++
-          console.log(chalk.gray(`Reconnecting in ${this.reconnectDelay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`))
+          this.log(`Reconnecting in ${this.reconnectDelay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`, 'info')
           setTimeout(() => this.connect(), this.reconnectDelay)
         }
       })
       
     } catch (error) {
-      console.error(chalk.red('Failed to connect to user data stream:'), error)
+      this.log(`Failed to connect to user data stream: ${error}`, 'error')
       throw error
     }
   }
@@ -197,7 +205,7 @@ export class BinanceUserDataWS {
         arguments: { listenKey: this.listenKey }
       })
     } catch (error) {
-      console.error(chalk.red('Failed to keep listen key alive:'), error)
+      this.log(`Failed to keep listen key alive: ${error}`, 'error')
     }
   }
   

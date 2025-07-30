@@ -36,10 +36,11 @@ interface Position {
 }
 
 interface MarkerOrder {
-  orderId: string;
+  bidOrderId?: string;
+  askOrderId?: string;
   symbol: string;
-  side: 'BUY' | 'SELL';
-  price: number;
+  bidPrice?: number;
+  askPrice?: number;
   size: number;
   status: 'NEW' | 'FILLED' | 'CANCELED';
 }
@@ -73,6 +74,7 @@ class OrderFlowMMTUI {
   private tradesBox: blessed.Widgets.Log;
   private historyBox: blessed.Widgets.BoxElement;
   private tradingBox: blessed.Widgets.BoxElement; // New trading status box
+  private logsBox: blessed.Widgets.Log; // New logs panel
   
   private orderFlowAnalyzer: OrderFlowImbalance;
   private imbalanceHistory: CircularBuffer<ImbalanceHistory> = new CircularBuffer(50);
@@ -99,14 +101,37 @@ class OrderFlowMMTUI {
   private backoff: ExponentialBackoff;
   private minOrderSize: number = 0.001;
   private stepSize: number = 0.001;
-  private tradingEnabled: boolean = false;
+  private tradingEnabled: boolean = true; // Enable by default
+  private tradingLogs: string[] = [];
+  
+  private log(message: string, type: 'info' | 'warn' | 'error' | 'success' = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    let coloredMsg = message;
+    switch(type) {
+      case 'error': coloredMsg = `{red-fg}${message}{/red-fg}`; break;
+      case 'warn': coloredMsg = `{yellow-fg}${message}{/yellow-fg}`; break;
+      case 'success': coloredMsg = `{green-fg}${message}{/green-fg}`; break;
+      default: coloredMsg = `{gray-fg}${message}{/gray-fg}`;
+    }
+    
+    // Add to logs panel if it exists
+    if (this.logsBox) {
+      this.logsBox.log(`${timestamp} ${coloredMsg}`);
+    }
+    
+    // Also keep in trading logs for trading status panel
+    this.tradingLogs.push(`${timestamp} ${coloredMsg}`);
+    // Keep only last 10 logs for trading status
+    if (this.tradingLogs.length > 10) {
+      this.tradingLogs.shift();
+    }
+  }
   
   constructor(
     private readonly symbol: string,
     private readonly atrValue: number,
     private readonly avgTradeSize: number,
-    private readonly avgSpread: number,
-    private readonly enableTrading: boolean = false
+    private readonly avgSpread: number
   ) {
     // Adjust precision based on symbol
     if (symbol.includes('BTC')) {
@@ -117,7 +142,6 @@ class OrderFlowMMTUI {
       this.pricePrecision = 7;
     }
     
-    this.tradingEnabled = enableTrading;
     this.backoff = new ExponentialBackoff(3000, 60000, 2);
     
     // Create screen
@@ -129,13 +153,13 @@ class OrderFlowMMTUI {
       tags: true
     });
     
-    // Create layout (modified to include trading box)
+    // Create layout with logs panel at bottom
     this.orderbookBox = blessed.box({
       label: ' Order Book ',
       left: 0,
       top: 0,
       width: '25%',
-      height: '50%',
+      height: '40%',
       border: { type: 'line' },
       scrollable: true,
       mouse: true,
@@ -151,7 +175,7 @@ class OrderFlowMMTUI {
       left: '25%',
       top: 0,
       width: '35%',
-      height: '50%',
+      height: '40%',
       border: { type: 'line' },
       scrollable: true,
       mouse: true,
@@ -168,7 +192,7 @@ class OrderFlowMMTUI {
       left: '60%',
       top: 0,
       width: '20%',
-      height: '50%',
+      height: '40%',
       border: { type: 'line' },
       scrollable: true,
       mouse: true,
@@ -179,27 +203,27 @@ class OrderFlowMMTUI {
       }
     });
     
-    // New trading status box
+    // Trading status box
     this.tradingBox = blessed.box({
       label: ' Trading Status ',
       left: '80%',
       top: 0,
       width: '20%',
-      height: '50%',
+      height: '40%',
       border: { type: 'line' },
       scrollable: true,
       mouse: true,
       vi: true,
       tags: true,
       style: {
-        border: { fg: this.tradingEnabled ? 'green' : 'red' }
+        border: { fg: 'green' }
       }
     });
     
     this.signalBox = blessed.box({
       label: ' Signals ',
       left: 0,
-      top: '50%',
+      top: '40%',
       width: '25%',
       height: '25%',
       border: { type: 'line' },
@@ -215,7 +239,7 @@ class OrderFlowMMTUI {
     this.tradesBox = blessed.log({
       label: ' Recent Trades ',
       left: '25%',
-      top: '50%',
+      top: '40%',
       width: '35%',
       height: '25%',
       border: { type: 'line' },
@@ -231,7 +255,7 @@ class OrderFlowMMTUI {
     this.historyBox = blessed.box({
       label: ' Metric History ',
       left: '60%',
-      top: '50%',
+      top: '40%',
       width: '40%',
       height: '25%',
       border: { type: 'line' },
@@ -241,6 +265,23 @@ class OrderFlowMMTUI {
       tags: true,
       style: {
         border: { fg: 'white' }
+      }
+    });
+    
+    // New logs panel at bottom
+    this.logsBox = blessed.log({
+      label: ' System Logs ',
+      left: 0,
+      bottom: 1,
+      width: '100%',
+      height: '35%',
+      border: { type: 'line' },
+      scrollable: true,
+      mouse: true,
+      vi: true,
+      tags: true,
+      style: {
+        border: { fg: 'gray' }
       }
     });
     
@@ -257,8 +298,7 @@ class OrderFlowMMTUI {
       }
     });
     
-    const tradingStatus = this.tradingEnabled ? 'LIVE TRADING' : 'VIEW ONLY';
-    statusBar.setContent(` ${symbol} | ATR: ${atrValue} | Mode: ${tradingStatus} | 'q' quit | 'r' reset | 't' toggle trading `);
+    statusBar.setContent(` ${symbol} | ATR: ${atrValue} | Mode: LIVE TRADING | 'q' quit | 'r' reset `);
     
     // Add all boxes to screen
     this.screen.append(this.orderbookBox);
@@ -268,6 +308,7 @@ class OrderFlowMMTUI {
     this.screen.append(this.signalBox);
     this.screen.append(this.tradesBox);
     this.screen.append(this.historyBox);
+    this.screen.append(this.logsBox);
     this.screen.append(statusBar);
     
     // Set up key bindings
@@ -282,23 +323,6 @@ class OrderFlowMMTUI {
       this.screen.render();
     });
     
-    this.screen.key(['t'], async () => {
-      if (!this.tradingEnabled && this.enableTrading) {
-        this.tradingEnabled = true;
-        await this.initializeTrading();
-        this.tradingBox.style.border.fg = 'green';
-        console.log(chalk.green('Trading enabled'));
-      } else if (this.tradingEnabled) {
-        this.tradingEnabled = false;
-        this.tradingBox.style.border.fg = 'red';
-        await this.cleanup();
-        console.log(chalk.yellow('Trading disabled'));
-      } else if (!this.enableTrading) {
-        console.log(chalk.red('Trading not available. Run with --trade flag to enable trading'));
-      }
-      this.screen.render();
-    });
-    
     // Initialize OrderFlowImbalance analyzer
     this.orderFlowAnalyzer = new OrderFlowImbalance(
       this.tickSize,
@@ -309,14 +333,24 @@ class OrderFlowMMTUI {
   }
   
   async initialize() {
-    if (this.tradingEnabled) {
+    try {
+      this.log('Initializing trading system...', 'info');
       await this.initializeTrading();
+      
+      // Update the trading box with initial status
+      this.tradingBox.setContent(this.formatTradingStatus());
+      this.screen.render();
+    } catch (error: any) {
+      this.log(`Initialize error: ${error.message || error}`, 'error');
+      this.tradingState = 'ERROR';
+      this.tradingBox.setContent(this.formatTradingStatus());
+      this.screen.render();
     }
   }
   
   private async initializeTrading() {
     try {
-      console.log(chalk.gray('Initializing MCP client...'));
+      this.log('Initializing MCP client...', 'info');
       
       const transport = new StdioClientTransport({
         command: 'npx',
@@ -331,7 +365,11 @@ class OrderFlowMMTUI {
       });
       
       await this.mcpClient.connect(transport);
-      console.log(chalk.green('✓ MCP client connected'));
+      this.log('MCP client connected', 'success');
+      
+      // List available tools to verify connection
+      const tools = await this.mcpClient.listTools();
+      this.log(`Available tools: ${tools.tools.length}`, 'info');
       
       // Get account info
       await this.getAccountInfo();
@@ -346,8 +384,9 @@ class OrderFlowMMTUI {
       await this.checkExistingPositions();
       
       this.tradingState = 'WATCHING';
-    } catch (error) {
-      console.error(chalk.red('Failed to initialize trading:'), error);
+      this.log('Trading initialized', 'success');
+    } catch (error: any) {
+      this.log(`Failed to initialize: ${error.message || error}`, 'error');
       this.tradingState = 'ERROR';
       this.tradingEnabled = false;
     }
@@ -362,24 +401,54 @@ class OrderFlowMMTUI {
     });
     
     const response = JSON.parse((result.content as any)[0].text);
+    
+    // Debug log the response structure (before console suppression)
+    this.log('Checking account structure...', 'info');
+    
+    // Handle different response structures
     const account = response.account || response;
     
-    // Extract balance
+    // Check if we have assets array
     if (account.assets && Array.isArray(account.assets)) {
+      // Find USDC balance
       const usdcAsset = account.assets.find((a: any) => a.asset === 'USDC');
       if (usdcAsset) {
         this.accountBalance = parseFloat(usdcAsset.availableBalance || usdcAsset.free || '0');
+      } else {
+        // Sum all available balances
+        this.accountBalance = account.assets.reduce((sum: number, asset: any) => {
+          return sum + parseFloat(asset.availableBalance || asset.free || '0');
+        }, 0);
       }
     } else if (account.balances && Array.isArray(account.balances)) {
+      // Alternative structure with balances array
       const usdcBalance = account.balances.find((b: any) => b.asset === 'USDC');
       if (usdcBalance) {
         this.accountBalance = parseFloat(usdcBalance.free || usdcBalance.availableBalance || '0');
+      } else {
+        // Sum all free balances
+        this.accountBalance = account.balances.reduce((sum: number, balance: any) => {
+          return sum + parseFloat(balance.free || balance.availableBalance || '0');
+        }, 0);
       }
     } else {
+      // Fallback to direct fields
       this.accountBalance = parseFloat(account.availableBalance || account.totalWalletBalance || '0');
     }
     
-    console.log(chalk.green(`✓ Account balance: $${this.accountBalance.toFixed(2)}`));
+    // Show more detailed balance info
+    this.log(`Balance: $${this.accountBalance.toFixed(2)}`, 'success');
+    if (account.totalWalletBalance) {
+      this.log(`Total Wallet: $${parseFloat(account.totalWalletBalance).toFixed(2)}`, 'info');
+    }
+    if (account.totalUnrealizedProfit && parseFloat(account.totalUnrealizedProfit) !== 0) {
+      this.log(`Unrealized PnL: $${parseFloat(account.totalUnrealizedProfit).toFixed(2)}`, 'info');
+    }
+    
+    // Warning for low balance but don't block trading
+    if (this.accountBalance < 20) {
+      this.log(`Low balance warning: $${this.accountBalance.toFixed(2)}`, 'warn');
+    }
   }
   
   private async getExchangeInfo() {
@@ -399,32 +468,45 @@ class OrderFlowMMTUI {
       if (lotSizeFilter) {
         this.minOrderSize = parseFloat(lotSizeFilter.minQty);
         this.stepSize = parseFloat(lotSizeFilter.stepSize);
-        console.log(chalk.gray(`Exchange info: minQty=${lotSizeFilter.minQty}, stepSize=${lotSizeFilter.stepSize}`));
+        this.log(`Min qty: ${lotSizeFilter.minQty}, Step: ${lotSizeFilter.stepSize}`, 'info');
+        
+        // Validate stepSize
+        if (isNaN(this.stepSize) || this.stepSize <= 0) {
+          this.log(`Invalid stepSize ${lotSizeFilter.stepSize}, using default 0.001`, 'warn');
+          this.stepSize = 0.001;
+        }
+      } else {
+        this.log('LOT_SIZE filter not found, using defaults', 'warn');
+        this.minOrderSize = 0.001;
+        this.stepSize = 0.001;
       }
     } catch (error) {
-      console.warn(chalk.yellow('Failed to get exchange info, using defaults'));
+      this.log('Failed to get exchange info, using defaults', 'warn');
+      this.minOrderSize = 0.001;
+      this.stepSize = 0.001;
     }
   }
   
   private async initializeUserDataWS() {
     if (!this.mcpClient) return;
     
-    console.log(chalk.gray('Initializing user data stream...'));
+    this.log('Initializing user data stream...', 'info');
     
     this.userDataWS = new BinanceUserDataWS(
       this.mcpClient,
-      (data) => this.handleUserDataUpdate(data)
+      (data) => this.handleUserDataUpdate(data),
+      (message, level) => this.log(message, level as any)
     );
     
     await this.userDataWS.connect();
-    console.log(chalk.green('✓ User data stream connected'));
+    this.log('User data stream connected', 'success');
   }
   
   private async handleUserDataUpdate(data: AccountUpdate | OrderUpdate) {
     if (data.eventType === 'ACCOUNT_UPDATE') {
       await this.handleAccountUpdate(data);
     } else if (data.eventType === 'ORDER_TRADE_UPDATE') {
-      this.handleOrderUpdate(data);
+      await this.handleOrderUpdate(data);
     }
   }
   
@@ -448,7 +530,7 @@ class OrderFlowMMTUI {
         if (posAmt === 0) {
           // Position closed
           const unrealizedProfit = parseFloat(positionUpdate.unRealizedProfit);
-          console.log(chalk.green(`\n✓ Position closed (PnL: $${unrealizedProfit.toFixed(2)})`));
+          this.log(`Position closed (PnL: $${unrealizedProfit.toFixed(2)})`, 'success');
           
           // Update stats
           this.tradingStats.totalTrades++;
@@ -466,17 +548,77 @@ class OrderFlowMMTUI {
     }
   }
   
-  private handleOrderUpdate(update: OrderUpdate) {
-    if (this.markerOrder && update.orderId.toString() === this.markerOrder.orderId) {
-      this.markerOrder.status = update.orderStatus as any;
+  private async handleOrderUpdate(update: OrderUpdate) {
+    if (!this.markerOrder) return;
+    
+    const orderId = update.orderId.toString();
+    
+    // Check if this is one of our MM orders
+    if (orderId === this.markerOrder.bidOrderId || orderId === this.markerOrder.askOrderId) {
+      const isBidOrder = orderId === this.markerOrder.bidOrderId;
+      const orderType = isBidOrder ? 'Bid' : 'Ask';
       
       if (update.orderStatus === 'FILLED') {
-        console.log(chalk.green(`✅ Order FILLED: ${update.side} ${update.originalQuantity} @ ${update.averagePrice}`));
-        this.onOrderFilled();
-      } else if (update.orderStatus === 'CANCELED') {
-        console.log(chalk.yellow(`❌ Order cancelled`));
+        this.log(`${orderType} FILLED: ${update.originalQuantity} @ ${update.averagePrice}`, 'success');
+        
+        // When one side fills, cancel the other side and create position
+        const side = update.side === 'BUY' ? 'LONG' : 'SHORT';
+        const fillPrice = parseFloat(update.averagePrice);
+        
+        // Cancel the opposite side order
+        if (isBidOrder && this.markerOrder.askOrderId) {
+          await this.mcpClient?.callTool({
+            name: 'cancel_order',
+            arguments: {
+              symbol: this.symbol,
+              orderId: this.markerOrder.askOrderId
+            }
+          }).catch(err => this.log(`Failed to cancel ask: ${err}`, 'error'));
+        } else if (!isBidOrder && this.markerOrder.bidOrderId) {
+          await this.mcpClient?.callTool({
+            name: 'cancel_order',
+            arguments: {
+              symbol: this.symbol,
+              orderId: this.markerOrder.bidOrderId
+            }
+          }).catch(err => this.log(`Failed to cancel bid: ${err}`, 'error'));
+        }
+        
+        // Create position
+        this.position = {
+          symbol: this.markerOrder.symbol,
+          side,
+          entryPrice: fillPrice,
+          size: this.markerOrder.size,
+          entryTime: Date.now(),
+          slPrice: this.calculateSLPrice(side, fillPrice)
+        };
+        
         this.markerOrder = null;
-        this.tradingState = 'WATCHING';
+        this.tradingState = 'POSITION_ACTIVE';
+        this.tradingStats.lastTradeTime = Date.now();
+        
+        this.log(`Position opened: ${side} @ ${fillPrice}`, 'success');
+        this.log(`SL: ${this.position.slPrice.toFixed(this.pricePrecision)}`, 'info');
+        
+        // Place stop loss immediately
+        await this.placeSLOrder();
+        
+      } else if (update.orderStatus === 'CANCELED') {
+        this.log(`${orderType} order cancelled`, 'warn');
+        
+        // Update marker order state
+        if (isBidOrder) {
+          this.markerOrder.bidOrderId = undefined;
+        } else {
+          this.markerOrder.askOrderId = undefined;
+        }
+        
+        // If both orders are cancelled, reset state
+        if (!this.markerOrder.bidOrderId && !this.markerOrder.askOrderId) {
+          this.markerOrder = null;
+          this.tradingState = 'WATCHING';
+        }
       }
     }
   }
@@ -512,13 +654,13 @@ class OrderFlowMMTUI {
         };
         
         this.tradingState = 'POSITION_ACTIVE';
-        console.log(chalk.yellow(`Found existing ${side} position @ ${entryPrice}`));
+        this.log(`Found existing ${side} position @ ${entryPrice}`, 'warn');
         
         // Place SL if missing
         await this.ensureSLOrder();
       }
     } catch (error) {
-      console.error(chalk.red('Error checking existing positions:'), error);
+      this.log(`Error checking positions: ${error}`, 'error');
     }
   }
   
@@ -540,22 +682,40 @@ class OrderFlowMMTUI {
   }
   
   private calculatePositionSize(): number {
+    // Check minimum balance requirement
     if (this.accountBalance < 5) {
+      this.log(`Insufficient balance: $${this.accountBalance.toFixed(2)}`, 'error');
       return 0;
     }
     
+    // Risk 5% of account or $50 max
     const riskAmount = Math.min(this.accountBalance * 0.05, 50);
     const currentPrice = this.getCurrentPrice();
-    if (!currentPrice) return 0;
+    if (!currentPrice) {
+      this.log('Cannot calculate position size: no current price', 'error');
+      return 0;
+    }
     
     const positionSize = riskAmount / currentPrice;
     const rounded = this.roundToStepSize(positionSize);
     
+    // Validate notional value (Binance minimum is $5)
     const notional = rounded * currentPrice;
     if (notional < 5) {
-      return 0;
+      // Try to meet minimum by adjusting size
+      const minSize = this.roundToStepSize(5.1 / currentPrice);
+      const minNotional = minSize * currentPrice;
+      
+      if (minNotional > this.accountBalance * 0.95) {
+        this.log(`Cannot meet $5 minimum with current balance`, 'error');
+        return 0;
+      }
+      
+      this.log(`Adjusted to minimum size: ${minSize} ($${minNotional.toFixed(2)})`, 'info');
+      return minSize;
     }
     
+    this.log(`Position size: ${rounded} ($${notional.toFixed(2)})`, 'info');
     return rounded;
   }
   
@@ -583,142 +743,174 @@ class OrderFlowMMTUI {
     if (!this.lastOrderbook || this.lastOrderbook.bids.length === 0 || this.lastOrderbook.asks.length === 0) {
       return null;
     }
-    return (this.lastOrderbook.bids[0].price + this.lastOrderbook.asks[0].price) / 2;
+    const midPrice = (this.lastOrderbook.bids[0].price + this.lastOrderbook.asks[0].price) / 2;
+    return midPrice;
   }
   
   private async handleSignal(signal: any) {
-    if (!this.tradingEnabled || !this.mcpClient) return;
+    if (!this.tradingEnabled) {
+      // Log why we're not trading
+      this.log('Trading disabled - ignoring signal', 'warn');
+      return;
+    }
+    
+    if (!this.mcpClient) {
+      this.log('MCP client not initialized', 'error');
+      return;
+    }
     
     // Handle MM signals from OrderFlowImbalance
     if (!signal || !signal.type) return;
     
-    console.log(chalk.cyan(`Signal received: ${signal.type}`));
+    this.log(`Signal: ${signal.type} | State: ${this.tradingState} | Balance: $${this.accountBalance.toFixed(2)}`, 'info');
     
     // Handle different signal types
     switch (signal.type) {
       case 'CANCEL':
         if (this.markerOrder) {
-          console.log(chalk.yellow(`Signal: ${signal.reason || 'Cancel orders'}`));
+          this.log(`Cancel: ${signal.reason || 'Cancel orders'}`, 'warn');
           await this.cancelMarkerOrder();
         }
         break;
         
       case 'SETUP':
-        console.log(chalk.cyan(`SETUP signal received. State: ${this.tradingState}, MarkerOrder: ${!!this.markerOrder}, Position: ${!!this.position}`));
         // Only act if we're in WATCHING state and don't have existing orders/positions
-        if (this.tradingState === 'WATCHING' && !this.markerOrder && !this.position) {
-          // For directional trading, we need to determine which side to trade
-          // Based on the MM signal's bid/ask setup, we'll trade in the direction of imbalance
-          const { priceImpactImbalance, orderbookPressure, microstructureFlowImbalance, flowToxicity } = signal.metrics;
-          console.log(chalk.gray(`Metrics: PII=${priceImpactImbalance.toFixed(3)}, OBP=${orderbookPressure.toFixed(3)}, MFI=${microstructureFlowImbalance.toFixed(3)}, Toxicity=${flowToxicity.toFixed(3)}`));
-          
-          // Skip if toxicity is too high for directional trading
-          if (flowToxicity > 0.4) {
-            console.log(chalk.yellow('Toxicity too high for directional trade'));
-            return;
-          }
-          
-          let side: 'BUY' | 'SELL' | null = null;
-          let orderPrice = 0;
-          
-          // Determine direction based on imbalances
-          // Strong PII > 0 means easier to push price up (buy pressure)
-          // Strong PII < 0 means easier to push price down (sell pressure)
-          if (priceImpactImbalance > 0.5 && microstructureFlowImbalance > 0.3) {
-            side = 'BUY';
-            // Use the bid price from MM signal or calculate our own
-            orderPrice = signal.bidPrice || (this.getCurrentPrice()! - this.tickSize);
-          } else if (priceImpactImbalance < -0.5 && microstructureFlowImbalance < -0.3) {
-            side = 'SELL';
-            // Use the ask price from MM signal or calculate our own
-            orderPrice = signal.askPrice || (this.getCurrentPrice()! + this.tickSize);
-          } else if (Math.abs(orderbookPressure) > 0.6) {
-            // Trade based on orderbook pressure
-            if (orderbookPressure > 0.6) {
-              // Bid side stronger, buy pressure
-              side = 'BUY';
-              orderPrice = signal.bidPrice || (this.getCurrentPrice()! - this.tickSize);
-            } else {
-              // Ask side stronger, sell pressure
-              side = 'SELL';
-              orderPrice = signal.askPrice || (this.getCurrentPrice()! + this.tickSize);
-            }
-          }
-          
-          if (side && orderPrice > 0) {
-            console.log(chalk.green(`Placing ${side} order based on imbalances`));
-            await this.placeMarkerOrder({
-              side,
-              price: this.roundToTickSize(orderPrice),
-              reason: signal.reason || `${signal.type} signal: PII=${priceImpactImbalance.toFixed(2)}, MFI=${microstructureFlowImbalance.toFixed(2)}`
-            });
-          } else {
-            console.log(chalk.gray(`No clear directional signal: PII=${priceImpactImbalance.toFixed(3)}, OBP=${orderbookPressure.toFixed(3)}, MFI=${microstructureFlowImbalance.toFixed(3)}`));
-          }
+        if (this.tradingState !== 'WATCHING') {
+          this.log(`Skip SETUP: wrong state (${this.tradingState})`, 'warn');
+          return;
         }
+        
+        if (this.markerOrder || this.position) {
+          this.log(`Skip SETUP: order=${!!this.markerOrder}, position=${!!this.position}`, 'warn');
+          return;
+        }
+        
+        // For market making, we place both bid and ask orders
+        const { priceImpactImbalance, orderbookPressure, microstructureFlowImbalance, flowToxicity } = signal.metrics;
+        
+        this.log(`MM Signal: PII=${priceImpactImbalance.toFixed(3)}, OBP=${orderbookPressure.toFixed(3)}, MFI=${microstructureFlowImbalance.toFixed(3)}, Tox=${flowToxicity.toFixed(3)}`, 'info');
+        
+        // Check if we have valid bid and ask prices from the signal
+        if (!signal.bidPrice || !signal.askPrice) {
+          this.log('Invalid signal: missing bid/ask prices', 'error');
+          return;
+        }
+        
+        // Place both bid and ask orders for market making
+        this.log(`Placing MM orders: Bid=${signal.bidPrice.toFixed(this.pricePrecision)}, Ask=${signal.askPrice.toFixed(this.pricePrecision)}`, 'success');
+        await this.placeMarketMakingOrders({
+          bidPrice: signal.bidPrice,
+          askPrice: signal.askPrice,
+          reason: signal.reason || `MM signal: ${signal.type}`
+        });
         break;
     }
   }
   
-  private async placeMarkerOrder(params: { side: 'BUY' | 'SELL', price: number, reason: string }) {
-    if (!this.mcpClient || this.markerOrder || this.position) return;
+  private async placeMarketMakingOrders(params: { bidPrice: number, askPrice: number, reason: string }) {
+    if (!this.mcpClient) {
+      this.log('Cannot place orders: MCP client not connected', 'error');
+      return;
+    }
+    
+    if (this.markerOrder) {
+      this.log('Already have pending orders', 'warn');
+      return;
+    }
+    
+    if (this.position) {
+      this.log('Already have active position', 'warn');
+      return;
+    }
     
     const operationKey = `marker_order_${this.symbol}`;
     if (!this.backoff.canAttempt(operationKey)) {
+      this.log('Order placement in backoff', 'warn');
       return;
     }
     
     const positionSize = this.calculatePositionSize();
     if (positionSize === 0) {
-      return;
+      return; // Error already logged in calculatePositionSize
     }
     
     try {
-      console.log(chalk.cyan(`\n📊 Placing ${params.side} order @ ${params.price.toFixed(this.pricePrecision)}`));
-      console.log(chalk.gray(`  Reason: ${params.reason}`));
+      this.log(`Placing MM orders: Bid @ ${params.bidPrice.toFixed(this.pricePrecision)}, Ask @ ${params.askPrice.toFixed(this.pricePrecision)}`, 'info');
+      this.log(`Reason: ${params.reason}`, 'info');
       
-      const result = await this.mcpClient.callTool({
+      // Place bid order
+      const bidResult = await this.mcpClient.callTool({
         name: 'place_order',
         arguments: {
           symbol: this.symbol,
-          side: params.side,
+          side: 'BUY',
           type: 'LIMIT',
           quantity: positionSize,
-          price: params.price,
+          price: params.bidPrice,
           timeInForce: 'GTX' // Post-only
         }
       });
       
-      const responseText = (result.content as any)[0].text;
+      const bidResponseText = (bidResult.content as any)[0].text;
+      let bidOrderId: string | undefined;
       
-      if (responseText.includes('error')) {
-        const errorData = JSON.parse(responseText);
-        if (!errorData.error.includes('could not be executed as maker')) {
-          console.error(chalk.red('Order placement failed:'), errorData.error);
+      if (!bidResponseText.includes('error')) {
+        const bidOrder = JSON.parse(bidResponseText);
+        bidOrderId = bidOrder.orderId;
+        this.log(`Bid order placed: #${bidOrderId}`, 'success');
+      } else {
+        const errorData = JSON.parse(bidResponseText);
+        this.log(`Bid order failed: ${errorData.error}`, 'error');
+      }
+      
+      // Place ask order
+      const askResult = await this.mcpClient.callTool({
+        name: 'place_order',
+        arguments: {
+          symbol: this.symbol,
+          side: 'SELL',
+          type: 'LIMIT',
+          quantity: positionSize,
+          price: params.askPrice,
+          timeInForce: 'GTX' // Post-only
         }
-        throw new Error(errorData.error);
+      });
+      
+      const askResponseText = (askResult.content as any)[0].text;
+      let askOrderId: string | undefined;
+      
+      if (!askResponseText.includes('error')) {
+        const askOrder = JSON.parse(askResponseText);
+        askOrderId = askOrder.orderId;
+        this.log(`Ask order placed: #${askOrderId}`, 'success');
+      } else {
+        const errorData = JSON.parse(askResponseText);
+        this.log(`Ask order failed: ${errorData.error}`, 'error');
       }
       
-      const order = JSON.parse(responseText);
+      // If at least one order was placed successfully
+      if (bidOrderId || askOrderId) {
+        this.markerOrder = {
+          bidOrderId,
+          askOrderId,
+          symbol: this.symbol,
+          bidPrice: params.bidPrice,
+          askPrice: params.askPrice,
+          size: positionSize,
+          status: 'NEW'
+        };
+        
+        this.tradingState = 'ORDER_PLACED';
+        this.log(`MM orders active: Bid=${!!bidOrderId}, Ask=${!!askOrderId}`, 'success');
+        this.backoff.recordSuccess(operationKey);
+      } else {
+        this.log('Failed to place any orders', 'error');
+        this.backoff.recordFailure(operationKey);
+      }
       
-      this.markerOrder = {
-        orderId: order.orderId.toString(),
-        symbol: order.symbol,
-        side: order.side,
-        price: parseFloat(order.price),
-        size: parseFloat(order.origQty),
-        status: 'NEW'
-      };
-      
-      this.tradingState = 'ORDER_PLACED';
-      console.log(chalk.green(`✓ Order placed #${order.orderId}`));
-      this.backoff.recordSuccess(operationKey);
     } catch (error: any) {
-      if (!error.message?.includes('could not be executed as maker')) {
-        console.error(chalk.red('Failed to place order:'), error);
-        const nextRetrySeconds = this.backoff.recordFailure(operationKey);
-        console.log(chalk.gray(`  Will retry in ${nextRetrySeconds}s...`));
-      }
+      this.log(`Order placement error: ${error.message || error}`, 'error');
+      this.backoff.recordFailure(operationKey);
     }
   }
   
@@ -726,45 +918,43 @@ class OrderFlowMMTUI {
     if (!this.mcpClient || !this.markerOrder) return;
     
     try {
-      await this.mcpClient.callTool({
-        name: 'cancel_order',
-        arguments: {
-          symbol: this.markerOrder.symbol,
-          orderId: this.markerOrder.orderId
+      // Cancel bid order if exists
+      if (this.markerOrder.bidOrderId) {
+        try {
+          await this.mcpClient.callTool({
+            name: 'cancel_order',
+            arguments: {
+              symbol: this.markerOrder.symbol,
+              orderId: this.markerOrder.bidOrderId
+            }
+          });
+          this.log(`Cancelled bid order #${this.markerOrder.bidOrderId}`, 'info');
+        } catch (error) {
+          this.log(`Failed to cancel bid: ${error}`, 'error');
         }
-      });
+      }
       
-      console.log(chalk.yellow(`✓ Cancelled order #${this.markerOrder.orderId}`));
+      // Cancel ask order if exists
+      if (this.markerOrder.askOrderId) {
+        try {
+          await this.mcpClient.callTool({
+            name: 'cancel_order',
+            arguments: {
+              symbol: this.markerOrder.symbol,
+              orderId: this.markerOrder.askOrderId
+            }
+          });
+          this.log(`Cancelled ask order #${this.markerOrder.askOrderId}`, 'info');
+        } catch (error) {
+          this.log(`Failed to cancel ask: ${error}`, 'error');
+        }
+      }
+      
       this.markerOrder = null;
       this.tradingState = 'WATCHING';
     } catch (error) {
-      console.error(chalk.red('Failed to cancel order:'), error);
+      this.log(`Failed to cancel orders: ${error}`, 'error');
     }
-  }
-  
-  private async onOrderFilled() {
-    if (!this.markerOrder) return;
-    
-    const side = this.markerOrder.side === 'BUY' ? 'LONG' : 'SHORT';
-    
-    this.position = {
-      symbol: this.markerOrder.symbol,
-      side,
-      entryPrice: this.markerOrder.price,
-      size: this.markerOrder.size,
-      entryTime: Date.now(),
-      slPrice: this.calculateSLPrice(side, this.markerOrder.price)
-    };
-    
-    this.markerOrder = null;
-    this.tradingState = 'POSITION_ACTIVE';
-    this.tradingStats.lastTradeTime = Date.now();
-    
-    console.log(chalk.green(`\n✓ Position opened: ${side} @ ${this.position.entryPrice}`));
-    console.log(chalk.gray(`  SL: ${this.position.slPrice.toFixed(this.pricePrecision)}`));
-    
-    // Place stop loss immediately
-    await this.placeSLOrder();
   }
   
   private async placeSLOrder() {
@@ -788,17 +978,17 @@ class OrderFlowMMTUI {
       if (!responseText.includes('error')) {
         const slOrder = JSON.parse(responseText);
         this.position.slOrderId = slOrder.orderId;
-        console.log(chalk.green(`✓ SL order placed #${slOrder.orderId} @ ${this.position.slPrice.toFixed(this.pricePrecision)}`));
+        this.log(`SL order placed #${slOrder.orderId}`, 'success');
       }
     } catch (error) {
-      console.error(chalk.red('Failed to place SL order:'), error);
+      this.log(`Failed to place SL order: ${error}`, 'error');
     }
   }
   
   private async ensureSLOrder() {
     if (!this.position || this.position.slOrderId) return;
     
-    console.log(chalk.yellow('SL order missing, placing now...'));
+    this.log('SL order missing, placing now...', 'warn');
     await this.placeSLOrder();
   }
   
@@ -819,7 +1009,7 @@ class OrderFlowMMTUI {
   private formatTradingStatus(): string {
     const lines: string[] = [];
     
-    lines.push(`{bold}Mode:{/bold} ${this.tradingEnabled ? '{green-fg}LIVE{/green-fg}' : '{red-fg}VIEW ONLY{/red-fg}'}`);
+    lines.push(`{bold}Mode:{/bold} {green-fg}LIVE TRADING{/green-fg}`);
     lines.push(`{bold}State:{/bold} ${this.tradingState}`);
     lines.push(`{bold}Balance:{/bold} $${this.accountBalance.toFixed(2)}`);
     lines.push('');
@@ -840,19 +1030,14 @@ class OrderFlowMMTUI {
         lines.push(`PnL: ${pnl >= 0 ? '{green-fg}' : '{red-fg}'}${pnl.toFixed(2)} (${pnlBps.toFixed(1)}bps){/}`);
       }
     } else if (this.markerOrder) {
-      lines.push('{bold}Pending Order:{/bold}');
-      lines.push(`Side: ${this.markerOrder.side}`);
-      lines.push(`Price: ${this.markerOrder.price.toFixed(this.pricePrecision)}`);
+      lines.push('{bold}Market Making Orders:{/bold}');
+      if (this.markerOrder.bidOrderId && this.markerOrder.bidPrice) {
+        lines.push(`Bid: ${this.markerOrder.bidPrice.toFixed(this.pricePrecision)} #${this.markerOrder.bidOrderId.slice(-6)}`);
+      }
+      if (this.markerOrder.askOrderId && this.markerOrder.askPrice) {
+        lines.push(`Ask: ${this.markerOrder.askPrice.toFixed(this.pricePrecision)} #${this.markerOrder.askOrderId.slice(-6)}`);
+      }
       lines.push(`Size: ${this.markerOrder.size}`);
-    }
-    
-    lines.push('');
-    lines.push('{bold}Statistics:{/bold}');
-    lines.push(`Trades: ${this.tradingStats.totalTrades}`);
-    if (this.tradingStats.totalTrades > 0) {
-      const winRate = (this.tradingStats.winningTrades / this.tradingStats.totalTrades * 100).toFixed(1);
-      lines.push(`Win Rate: ${winRate}%`);
-      lines.push(`Total PnL: ${this.tradingStats.totalPnl >= 0 ? '{green-fg}' : '{red-fg}'}$${this.tradingStats.totalPnl.toFixed(2)}{/}`);
     }
     
     return lines.join('\n');
@@ -1125,9 +1310,12 @@ class OrderFlowMMTUI {
       
       // Handle trading signal
       if (signal && signal.type) {
+        // Log signal for debugging
+        this.log(`Signal detected: ${signal.type}`, 'info');
+        
         // Fire and forget - don't await to avoid blocking UI updates
         this.handleSignal(signal).catch(error => {
-          console.error(chalk.red('Error handling signal:'), error);
+          this.log(`Error handling signal: ${error}`, 'error');
         });
       }
       
@@ -1193,8 +1381,7 @@ async function main() {
     .option('-t, --avg-trade <number>', 'Average trade size', parseFloat, 0.5)
     .option('-p, --avg-spread <number>', 'Average spread', parseFloat, 0.1)
     .option('-u, --update-speed <ms>', 'Update speed in milliseconds', '100')
-    .option('-d, --depth <levels>', 'Orderbook depth levels', '20')
-    .option('--trade', 'Enable live trading (default: view only)', false);
+    .option('-d, --depth <levels>', 'Orderbook depth levels', '20');
   
   program.parse();
   const options = program.opts();
@@ -1213,27 +1400,61 @@ async function main() {
     symbol.toUpperCase(),
     options.atr,
     options.avgTrade,
-    options.avgSpread,
-    options.trade
+    options.avgSpread
   );
   
-  // Initialize trading components if enabled
-  await tui.initialize();
-  
-  // Connect to websocket
-  const ws = new BinanceWebsocket(
-    symbol.toUpperCase(),
-    (snapshot) => tui.update(snapshot),
-    parseInt(options.depth),
-    parseInt(options.updateSpeed)
-  );
-  
-  // Set up trade callback
-  ws.onTrade = (trade) => tui.update(ws.getOrderbook(), trade);
-  
-  // Start
-  await ws.connect();
-  tui.start();
+  try {
+    // Initialize trading components if enabled
+    await tui.initialize();
+    
+    // Connect to websocket
+    const ws = new BinanceWebsocket(
+      symbol.toUpperCase(),
+      (snapshot) => tui.update(snapshot),
+      parseInt(options.depth),
+      parseInt(options.updateSpeed)
+    );
+    
+    // Set up trade callback
+    ws.onTrade = (trade) => tui.update(ws.getOrderbook(), trade);
+    
+    // Connect websocket first
+    await ws.connect();
+    
+    // Set up global error handlers before suppressing console
+    process.on('uncaughtException', (error) => {
+      tui.log(`Uncaught Exception: ${error.message}`, 'error');
+      if (error.stack) {
+        tui.log(`Stack: ${error.stack.split('\n')[1]}`, 'error');
+      }
+    });
+    
+    process.on('unhandledRejection', (reason: any, promise) => {
+      tui.log(`Unhandled Rejection: ${reason}`, 'error');
+    });
+    
+    // Only suppress console output after everything is initialized
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    
+    // Redirect console to logs panel
+    console.log = (...args) => {
+      tui.log(args.join(' '), 'info');
+    };
+    console.error = (...args) => {
+      tui.log(args.join(' '), 'error');
+    };
+    console.warn = (...args) => {
+      tui.log(args.join(' '), 'warn');
+    };
+    
+    // Start the TUI
+    tui.start();
+  } catch (error) {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  }
 }
 
 main().catch(console.error);

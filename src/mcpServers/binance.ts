@@ -241,7 +241,7 @@ const binanceTools: Tool[] = [
   {
     name: 'get_top_symbols',
     description:
-      'Get low-liquidity USDC pairs with orderbook gaps, filtered by 5-minute ATR and sorted by volume descending',
+      'Get low-liquidity USDC pairs with orderbook gaps, filtered by 5-minute ATR and sorted by ATR ascending',
     inputSchema: {
       type: 'object',
       properties: {
@@ -914,16 +914,16 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                     return {
                       symbol: ticker.symbol,
                       volume: ticker.volume,
-                      quoteVolume: ticker.quoteVolume,
-                      priceChangePercent: ticker.priceChangePercent,
-                      lastPrice: ticker.lastPrice,
+                      quote_volume: ticker.quoteVolume,
+                      price_change_percent: ticker.priceChangePercent,
+                      last_price: ticker.lastPrice,
                       atr_bps_5m: atrBps5m,
                       atr_quote_5m: parseFloat(atr5m.quote.toFixed(4)),
-                      bestBid: bestBid.toFixed(pricePrecision),
-                      bestAsk: bestAsk.toFixed(pricePrecision),
+                      best_bid: bestBid.toFixed(pricePrecision),
+                      best_ask: bestAsk.toFixed(pricePrecision),
                       spread: spread.toFixed(pricePrecision),
-                      spreadTicks: spreadTicks,
-                      tickSize: tickSize
+                      spread_ticks: spreadTicks,
+                      tick_size: tickSize
                     }
                   }
                 }
@@ -936,10 +936,10 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           })
         )
 
-        // Filter out nulls and sort by volume descending
+        // Filter out nulls and sort by atr_bps_5m ascending
         const filteredPairs = pairsWithAtrAndGap
           .filter(pair => pair !== null)
-          .sort((a: any, b: any) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
+          .sort((a: any, b: any) => a.atr_bps_5m - b.atr_bps_5m)
           .slice(0, limit)
 
         return {

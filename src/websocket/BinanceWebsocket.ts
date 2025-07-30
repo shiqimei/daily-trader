@@ -11,7 +11,7 @@ interface BinanceDepthUpdate {
   a: [string, string][] // Asks to be updated
 }
 
-export class BinanceOrderbookWSSimple {
+export class BinanceWebsocket {
   private ws: WebSocket | null = null
   private orderbook: OrderbookSnapshot = {
     timestamp: 0,

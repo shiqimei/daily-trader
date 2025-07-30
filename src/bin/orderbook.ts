@@ -1,7 +1,7 @@
 #!/usr/bin/env -S npx tsx
 import { Command } from 'commander';
 import blessed from 'blessed';
-import { BinanceOrderbookWSSimple } from '../websocket/BinanceOrderbookWSSimple';
+import { BinanceWebsocket } from '../websocket/BinanceWebsocket';
 import { OrderbookDynamics } from '../analysis/OrderbookDynamics';
 import { CircularBuffer } from '../utils/CircularBuffer';
 import { 
@@ -222,7 +222,7 @@ class OrderbookTUI {
     }
   }
   
-  private formatPrice(price: number): string {
+  formatPrice(price: number): string {
     return price.toFixed(this.pricePrecision);
   }
   
@@ -505,7 +505,7 @@ program
       let latestMarketState: MarketState | null = null;
 
       // Connect to WebSocket
-      const ws = new BinanceOrderbookWSSimple(
+      const ws = new BinanceWebsocket(
         symbol,
         (snapshot) => {
           const now = Date.now();
@@ -577,13 +577,10 @@ program
             signal: latestSignal,
             stats: latestStats || {},
             marketState: latestMarketState || {
-              regime: 'UNKNOWN',
-              volatility: 0,
+              regime: 'QUIET' as const,
               liquidityScore: 0,
               trendStrength: 0,
-              isVolatile: false,
-              isLiquid: false,
-              isTrending: false
+              isVolatile: false
             }
           });
         }

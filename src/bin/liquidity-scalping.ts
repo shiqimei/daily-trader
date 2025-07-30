@@ -97,6 +97,7 @@ class LiquidityScalpingStrategy {
   private patternCheckInterval: number = 100 // ms
   private positionStartTime: number = 0
   private exitTimeouts: NodeJS.Timeout[] = []
+  private orderMonitorInterval: NodeJS.Timeout | null = null
 
   constructor() {}
 
@@ -143,7 +144,7 @@ class LiquidityScalpingStrategy {
     })
     
     const account = JSON.parse((result.content as any)[0].text)
-    this.accountBalance = parseFloat(account.totalBalance)
+    this.accountBalance = parseFloat(account.totalWalletBalance || account.availableBalance || '0')
     console.log(chalk.green(`✓ Account balance: $${this.accountBalance.toFixed(2)}`))
   }
 
@@ -172,15 +173,14 @@ class LiquidityScalpingStrategy {
     const result = await this.mcpClient!.callTool({
       name: 'get_top_symbols',
       arguments: {
-        min_atr_bps: 40,
-        max_atr_bps: 80,
-        sort_by: 'atr_bps_5m',
-        sort_order: 'asc',
+        minAtrBps: 40,
+        maxAtrBps: 80,
         limit: 10
       }
     })
     
-    const symbols = JSON.parse((result.content as any)[0].text)
+    const response = JSON.parse((result.content as any)[0].text)
+    const symbols = response.symbols || []
     if (symbols.length === 0) {
       console.log(chalk.yellow('No suitable markets found. Retrying in 30s...'))
       await new Promise(resolve => setTimeout(resolve, 30000))
@@ -191,20 +191,43 @@ class LiquidityScalpingStrategy {
     const selected = symbols[0]
     this.currentMarket = {
       symbol: selected.symbol,
-      atrBps: selected.atr_bps_5m,
-      atrValue: selected.atr_value_5m,
-      price: selected.price,
+      atrBps: Math.round(selected.atr_bps_5m),
+      atrValue: selected.atr_quote_5m,
+      price: parseFloat(selected.last_price),
       tickSize: selected.tick_size,
-      minOrderSize: selected.min_order_size,
-      volumeUSDT24h: selected.volume_usdt_24h
+      minOrderSize: 0.001, // Default for most pairs
+      volumeUSDT24h: parseFloat(selected.quote_volume)
     }
     
     console.log(chalk.green(`✓ Selected market: ${this.currentMarket.symbol}`))
     console.log(chalk.gray(`  ATR: ${this.currentMarket.atrBps}bps ($${this.currentMarket.atrValue.toFixed(4)})`))
     console.log(chalk.gray(`  Volume 24h: $${(this.currentMarket.volumeUSDT24h / 1e6).toFixed(2)}M`))
     
+    // Get proper exchange info for the symbol
+    await this.getExchangeInfo()
     await this.initializeOrderbook()
     this.state = 'ENTRY_HUNTING'
+  }
+
+  private async getExchangeInfo() {
+    try {
+      const result = await this.mcpClient!.callTool({
+        name: 'get_exchange_info',
+        arguments: {
+          symbol: this.currentMarket!.symbol
+        }
+      })
+      
+      const info = JSON.parse((result.content as any)[0].text)
+      
+      // Update minOrderSize from exchange info
+      const lotSizeFilter = info.filters.find((f: any) => f.filterType === 'LOT_SIZE')
+      if (lotSizeFilter) {
+        this.currentMarket!.minOrderSize = parseFloat(lotSizeFilter.minQty)
+      }
+    } catch (error) {
+      console.warn(chalk.yellow('Failed to get exchange info, using default min order size'))
+    }
   }
 
   private async initializeOrderbook() {
@@ -355,7 +378,12 @@ class LiquidityScalpingStrategy {
   private async monitorOrderFill() {
     if (!this.markerOrder) return
     
-    const checkInterval = setInterval(async () => {
+    // Clear any existing monitor
+    if (this.orderMonitorInterval) {
+      clearInterval(this.orderMonitorInterval)
+    }
+    
+    this.orderMonitorInterval = setInterval(async () => {
       try {
         const result = await this.mcpClient!.callTool({
           name: 'get_order',
@@ -368,10 +396,12 @@ class LiquidityScalpingStrategy {
         const order = JSON.parse((result.content as any)[0].text)
         
         if (order.status === 'FILLED') {
-          clearInterval(checkInterval)
+          clearInterval(this.orderMonitorInterval!)
+          this.orderMonitorInterval = null
           await this.onOrderFilled()
         } else if (order.status === 'CANCELED' || order.status === 'EXPIRED') {
-          clearInterval(checkInterval)
+          clearInterval(this.orderMonitorInterval!)
+          this.orderMonitorInterval = null
           this.markerOrder = null
           console.log(chalk.yellow(`Marker order ${order.status.toLowerCase()}`))
         }
@@ -662,6 +692,10 @@ class LiquidityScalpingStrategy {
     console.log(chalk.gray('\nCleaning up...'))
     
     this.clearExitTimers()
+    
+    if (this.orderMonitorInterval) {
+      clearInterval(this.orderMonitorInterval)
+    }
     
     if (this.websocket) {
       this.websocket.disconnect()

@@ -66,23 +66,19 @@ async function calculateAtr(
   for (let i = 1; i < klines.length; i++) {
     const current = klines[i]
     const previous = klines[i - 1]
-    
+
     const high = parseFloat(current[2])
     const low = parseFloat(current[3])
     const prevClose = parseFloat(previous[4])
-    
+
     // True Range = max(high - low, abs(high - prevClose), abs(low - prevClose))
-    const tr = Math.max(
-      high - low,
-      Math.abs(high - prevClose),
-      Math.abs(low - prevClose)
-    )
+    const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose))
     trueRanges.push(tr)
   }
 
   // Calculate ATR as the average of True Ranges
   const atr = trueRanges.reduce((sum, tr) => sum + tr, 0) / trueRanges.length
-  
+
   // Get current price for basis points calculation
   const currentPrice = parseFloat(klines[klines.length - 1][4]) // Last close price
   const atrBasisPoints = (atr / currentPrice) * 10000
@@ -579,7 +575,7 @@ const binanceTools: Tool[] = [
         symbols: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Trading pair symbols (default: ["BTCUSDC", "ETHUSDC"])'
+          description: 'Trading pair symbols (default: ["ETHUSDC"])'
         },
         last_days: { type: 'number', description: 'Number of days to look back', default: 7 },
         limit: { type: 'number', description: 'Number of positions to return (max: 5)', default: 5 }
@@ -775,10 +771,10 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
             }))
           }
           const csvCompressed = compressKlinesToCsv(originalFormat)
-          
+
           // Calculate ATR for this interval
           const atr = await calculateAtr(config, symbol, interval)
-          
+
           // Store CSV data and both ATR values
           results[interval] = {
             atr_bps: Math.round(atr.bps),
@@ -875,10 +871,9 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         const tickers = await makeRequest(config, '/fapi/v1/ticker/24hr')
 
         // Pre-filter USDC pairs with minimum volume
-        const usdcPairs = tickers
-          .filter((ticker: any) => {
-            return ticker.symbol.endsWith('USDC') && parseFloat(ticker.quoteVolume) > 1000000
-          })
+        const usdcPairs = tickers.filter((ticker: any) => {
+          return ticker.symbol.endsWith('USDC') && parseFloat(ticker.quoteVolume) > 1000000
+        })
 
         // Calculate ATR and check orderbook gaps for each symbol
         const pairsWithAtrAndGap = await Promise.all(
@@ -891,24 +886,25 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
               // Check if ATR is within range
               if (atrBps5m >= minAtrBps && atrBps5m <= maxAtrBps) {
                 // Get orderbook to check for gaps
-                const orderbook = await makeRequest(config, '/fapi/v1/depth', { 
-                  symbol: ticker.symbol, 
-                  limit: 5 
+                const orderbook = await makeRequest(config, '/fapi/v1/depth', {
+                  symbol: ticker.symbol,
+                  limit: 5
                 })
-                
+
                 // Get symbol info for price precision
                 const symbolInfo = await getSymbolInfo(config, ticker.symbol)
                 const pricePrecision = symbolInfo.pricePrecision || 2
                 const tickSize = parseFloat(
-                  symbolInfo.filters.find((f: any) => f.filterType === 'PRICE_FILTER')?.tickSize || '0.01'
+                  symbolInfo.filters.find((f: any) => f.filterType === 'PRICE_FILTER')?.tickSize ||
+                    '0.01'
                 )
-                
+
                 if (orderbook.bids.length > 0 && orderbook.asks.length > 0) {
                   const bestBid = parseFloat(orderbook.bids[0][0])
                   const bestAsk = parseFloat(orderbook.asks[0][0])
                   const spread = bestAsk - bestBid
                   const spreadTicks = Math.round(spread / tickSize)
-                  
+
                   // Only include if spread is more than 1 tick size (has gap)
                   if (spreadTicks > 1) {
                     return {
@@ -2156,7 +2152,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
 
         // Use default symbols if not provided or empty
-        const symbolsToUse = !symbols || symbols.length === 0 ? ['BTCUSDC', 'ETHUSDC'] : symbols
+        const symbolsToUse = !symbols || symbols.length === 0 ? ['ETHUSDC'] : symbols
 
         // Calculate time range based on last_days
         const now = Date.now()

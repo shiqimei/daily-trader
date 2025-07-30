@@ -676,7 +676,7 @@ class LiquidityScalpingStrategy {
     try {
       // Clean up existing websocket
       if (this.websocket) {
-        this.websocket.close()
+        this.websocket.disconnect()
         this.websocket = null
       }
       

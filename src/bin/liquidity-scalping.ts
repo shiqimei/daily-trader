@@ -41,6 +41,7 @@ import { OrderbookDynamics } from '../analysis/OrderbookDynamics'
 import { DynamicPattern, OrderbookSnapshot, TradingConfig } from '../types/orderbook'
 import { BinanceWebsocket } from '../websocket/BinanceWebsocket'
 import { BinanceUserDataWS, AccountUpdate, OrderUpdate } from '../websocket/BinanceUserDataWS'
+import { ExponentialBackoff } from '../utils/ExponentialBackoff'
 
 dayjs.extend(utc)
 
@@ -98,20 +99,20 @@ class LiquidityScalpingStrategy {
   private positionStartTime: number = 0
   // private exitTimeouts: NodeJS.Timeout[] = [] // Removed - no time-based exits
   private orderMonitorInterval: NodeJS.Timeout | null = null
-  private lastSLOrderAttempt: number = 0
-  private slOrderCooldown: number = 30000 // 30 seconds cooldown between SL order attempts
   private lastPositionCheck: number = 0
   private positionCheckInterval: number = 2000 // Check position status every 2 seconds
+  private lastTPSLCheck: number = 0
+  private tpslCheckInterval: number = 5000 // Check TP/SL orders every 5 seconds
   // Cleanup interval for dangling orders
   private cleanupInterval: NodeJS.Timeout | null = null
   
-  // Exponential backoff for TP order placement
-  private lastTPOrderAttempt: number = 0
-  private tpOrderAttempts: number = 0
-  private tpOrderBaseCooldown: number = 3000 // 3 seconds base cooldown
-  private tpOrderMaxCooldown: number = 60000 // 60 seconds max cooldown
+  // General exponential backoff for all operations
+  private backoff: ExponentialBackoff
 
-  constructor() {}
+  constructor() {
+    // Initialize with 3s base, 60s max, 2x multiplier
+    this.backoff = new ExponentialBackoff(3000, 60000, 2)
+  }
 
   async start() {
     try {
@@ -684,6 +685,13 @@ class LiquidityScalpingStrategy {
   }
 
   private async placeMarkerOrder(signal: { side: 'BUY' | 'SELL', price: number }) {
+    const operationKey = `marker_order_${this.currentMarket!.symbol}`
+    
+    // Check exponential backoff
+    if (!this.backoff.canAttempt(operationKey)) {
+      return // Still in cooldown
+    }
+    
     const positionSize = this.calculatePositionSize()
     
     // Validate order price is reasonable (within 10% of current price)
@@ -748,10 +756,13 @@ class LiquidityScalpingStrategy {
       
       // Start monitoring for fill
       this.monitorOrderFill()
+      this.backoff.recordSuccess(operationKey) // Reset on success
     } catch (error: any) {
       // Only log if it's not a Post-Only rejection
       if (!error.message || !error.message.includes('could not be executed as maker')) {
         console.error(chalk.red('Failed to place marker order:'), error)
+        const nextRetrySeconds = this.backoff.recordFailure(operationKey)
+        console.log(chalk.gray(`  Will retry in ${nextRetrySeconds}s...`))
       }
     }
   }
@@ -800,6 +811,12 @@ class LiquidityScalpingStrategy {
     
     const orderId = this.markerOrder.orderId
     const symbol = this.markerOrder.symbol
+    const operationKey = `cancel_marker_${symbol}_${orderId}`
+    
+    // Check exponential backoff
+    if (!this.backoff.canAttempt(operationKey)) {
+      return // Still in cooldown
+    }
     
     try {
       const result = await this.mcpClient!.callTool({
@@ -818,10 +835,13 @@ class LiquidityScalpingStrategy {
         clearInterval(this.orderMonitorInterval)
         this.orderMonitorInterval = null
       }
+      this.backoff.recordSuccess(operationKey) // Reset on success
     } catch (error: any) {
       console.error(chalk.red(`Failed to cancel marker order #${orderId}:`), error.message || error)
       // Still clear the marker order reference on error
       this.markerOrder = null
+      const nextRetrySeconds = this.backoff.recordFailure(operationKey)
+      console.log(chalk.gray(`  Will retry in ${nextRetrySeconds}s...`))
     }
   }
 
@@ -1028,6 +1048,15 @@ class LiquidityScalpingStrategy {
   private async ensureTPSLOrders() {
     if (!this.position) return
     
+    const now = Date.now()
+    
+    // Only check TP/SL orders every 5 seconds to avoid spam
+    if (now - this.lastTPSLCheck < this.tpslCheckInterval) {
+      return
+    }
+    
+    this.lastTPSLCheck = now
+    
     try {
       // Log current position state
       const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
@@ -1049,7 +1078,6 @@ class LiquidityScalpingStrategy {
       
       // Check if we need to place TP order
       if (!this.position.tpOrderId) {
-        console.log(chalk.yellow('TP order missing, placing now...'))
         await this.placeTPOrder()
       } else {
         // Verify TP order still exists
@@ -1077,12 +1105,7 @@ class LiquidityScalpingStrategy {
       
       // Check if we need to place SL order
       if (!this.position.slOrderId) {
-        const now = Date.now()
-        if (now - this.lastSLOrderAttempt > this.slOrderCooldown) {
-          console.log(chalk.yellow('SL order missing, placing now...'))
-          this.lastSLOrderAttempt = now
-          await this.placeSLOrder()
-        }
+        await this.placeSLOrder()
       } else {
         // Verify SL order still exists
         try {
@@ -1114,17 +1137,14 @@ class LiquidityScalpingStrategy {
   private async placeTPOrder() {
     if (!this.position) return
     
-    const now = Date.now()
+    const operationKey = `tp_order_${this.position.symbol}`
     
     // Check exponential backoff
-    const currentCooldown = Math.min(
-      this.tpOrderBaseCooldown * Math.pow(2, this.tpOrderAttempts),
-      this.tpOrderMaxCooldown
-    )
-    
-    if (now - this.lastTPOrderAttempt < currentCooldown) {
+    if (!this.backoff.canAttempt(operationKey)) {
       return // Still in cooldown
     }
+    
+    console.log(chalk.yellow('TP order missing, placing now...'))
     
     try {
       // Place TP order (maker limit order with GTX)
@@ -1146,13 +1166,42 @@ class LiquidityScalpingStrategy {
       // Check for error response
       if (tpResponseText.includes('error')) {
         const errorData = JSON.parse(tpResponseText)
+        
+        // Special handling for ReduceOnly rejection - might mean position closed
+        if (errorData.error && errorData.error.includes('ReduceOnly Order is rejected')) {
+          console.log(chalk.yellow('⚠️  ReduceOnly order rejected - checking if position closed...'))
+          
+          // Check current positions
+          try {
+            const posResult = await this.mcpClient!.callTool({
+              name: 'get_positions',
+              arguments: {}
+            })
+            
+            const posResponse = JSON.parse((posResult.content as any)[0].text)
+            const positions = posResponse.positions || []
+            
+            const activePosition = positions.find((p: any) => 
+              p.symbol === this.position!.symbol && 
+              parseFloat(p.positionAmt) !== 0
+            )
+            
+            if (!activePosition) {
+              console.log(chalk.green('✓ Position confirmed closed'))
+              this.position = null
+              this.clearExitTimers()
+              this.state = 'ENTRY_HUNTING'
+              console.log(chalk.cyan('\n🎯 Switching to ENTRY HUNTING mode'))
+            }
+          } catch (error) {
+            console.error(chalk.red('Failed to check position status:'), error)
+          }
+          
+          return
+        }
+        
         console.error(chalk.red('Failed to place TP order:'), errorData.error)
-        this.lastTPOrderAttempt = now
-        this.tpOrderAttempts++ // Increment for backoff
-        const nextRetrySeconds = Math.min(
-          this.tpOrderBaseCooldown * Math.pow(2, this.tpOrderAttempts) / 1000,
-          this.tpOrderMaxCooldown / 1000
-        )
+        const nextRetrySeconds = this.backoff.recordFailure(operationKey)
         console.log(chalk.gray(`  Will retry in ${nextRetrySeconds}s...`))
         return
       }
@@ -1176,48 +1225,50 @@ class LiquidityScalpingStrategy {
         if (tpRetryResponseText.includes('error')) {
           const errorData = JSON.parse(tpRetryResponseText)
           console.error(chalk.red('Failed to place TP order (GTC):'), errorData.error)
-          this.lastTPOrderAttempt = now
-          this.tpOrderAttempts++
+          const nextRetrySeconds = this.backoff.recordFailure(operationKey)
+          console.log(chalk.gray(`  Will retry in ${nextRetrySeconds}s...`))
           return
         }
         const tpOrder = JSON.parse(tpRetryResponseText)
         if (!tpOrder.orderId) {
           console.error(chalk.red('TP order response missing orderId'), tpOrder)
-          this.lastTPOrderAttempt = now
-          this.tpOrderAttempts++
+          const nextRetrySeconds = this.backoff.recordFailure(operationKey)
+          console.log(chalk.gray(`  Will retry in ${nextRetrySeconds}s...`))
           return
         }
         this.position.tpOrderId = tpOrder.orderId.toString()
         console.log(chalk.green(`✓ TP order placed #${tpOrder.orderId} at ${this.position.tpPrice.toFixed(4)} (GTC)`))
-        this.tpOrderAttempts = 0 // Reset on success
+        this.backoff.recordSuccess(operationKey) // Reset on success
       } else {
         const tpOrder = JSON.parse(tpResponseText)
         if (!tpOrder.orderId) {
           console.error(chalk.red('TP order response missing orderId'), tpOrder)
-          this.lastTPOrderAttempt = now
-          this.tpOrderAttempts++
+          const nextRetrySeconds = this.backoff.recordFailure(operationKey)
+          console.log(chalk.gray(`  Will retry in ${nextRetrySeconds}s...`))
           return
         }
         this.position.tpOrderId = tpOrder.orderId.toString()
         console.log(chalk.green(`✓ TP order placed #${tpOrder.orderId} at ${this.position.tpPrice.toFixed(4)} (GTX)`))
-        this.tpOrderAttempts = 0 // Reset on success
+        this.backoff.recordSuccess(operationKey) // Reset on success
       }
-      this.lastTPOrderAttempt = now
     } catch (error) {
       console.error(chalk.red('Failed to place TP order:'), error)
-      this.lastTPOrderAttempt = now
-      this.tpOrderAttempts++ // Increment for backoff
-      
-      const nextRetrySeconds = Math.min(
-        this.tpOrderBaseCooldown * Math.pow(2, this.tpOrderAttempts) / 1000,
-        this.tpOrderMaxCooldown / 1000
-      )
+      const nextRetrySeconds = this.backoff.recordFailure(operationKey)
       console.log(chalk.gray(`  Will retry in ${nextRetrySeconds}s...`))
     }
   }
   
   private async placeSLOrder() {
     if (!this.position) return
+    
+    const operationKey = `sl_order_${this.position.symbol}`
+    
+    // Check exponential backoff
+    if (!this.backoff.canAttempt(operationKey)) {
+      return // Still in cooldown
+    }
+    
+    console.log(chalk.yellow('SL order missing, placing now...'))
     
     // Check current price vs SL level
     const currentPrice = this.currentMarket!.price
@@ -1316,9 +1367,12 @@ class LiquidityScalpingStrategy {
       
       this.position.slOrderId = slOrder.orderId
       console.log(chalk.green(`✓ SL order placed #${slOrder.orderId} at ${this.position.slPrice.toFixed(4)} (STOP_MARKET)`))
+      this.backoff.recordSuccess(operationKey) // Reset on success
     } catch (error) {
       console.error(chalk.red('Failed to place SL order:'), error)
       this.position!.slOrderId = undefined
+      const nextRetrySeconds = this.backoff.recordFailure(operationKey)
+      console.log(chalk.gray(`  Will retry in ${nextRetrySeconds}s...`))
     }
   }
   

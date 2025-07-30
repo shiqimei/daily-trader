@@ -505,4 +505,9 @@ export class OrderbookDynamics {
   getCurrentDerivatives(): Derivatives {
     return this.calculateDerivatives()
   }
+  
+  getCurrentOrderbook(): OrderbookSnapshot | null {
+    const snapshots = this.orderbookHistory.toArray()
+    return snapshots.length > 0 ? snapshots[snapshots.length - 1] : null
+  }
 }

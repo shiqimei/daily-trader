@@ -464,7 +464,7 @@ async function main() {
     .name('orderflow')
     .description('Order Flow Imbalance visualization tool for Binance futures')
     .version('0.1.0')
-    .requiredOption('-s, --symbol <symbol>', 'Trading symbol (e.g., BTCUSDT)')
+    .argument('[symbol]', 'Trading symbol (e.g., BTCUSDT)')
     .option('-a, --atr <number>', 'ATR value', parseFloat, 50.0)
     .option('-t, --avg-trade <number>', 'Average trade size', parseFloat, 0.5)
     .option('-p, --avg-spread <number>', 'Average spread', parseFloat, 0.1)
@@ -473,10 +473,19 @@ async function main() {
   
   program.parse();
   const options = program.opts();
+  const args = program.args;
+  
+  // Get symbol from argument or option
+  const symbol = args[0] || options.symbol;
+  if (!symbol) {
+    console.error('Error: Symbol is required');
+    console.error('Usage: pnpm orderflow BTCUSDT');
+    process.exit(1);
+  }
   
   // Create TUI
   const tui = new OrderFlowTUI(
-    options.symbol.toUpperCase(),
+    symbol.toUpperCase(),
     options.atr,
     options.avgTrade,
     options.avgSpread
@@ -484,7 +493,7 @@ async function main() {
   
   // Connect to websocket
   const ws = new BinanceWebsocket(
-    options.symbol.toUpperCase(),
+    symbol.toUpperCase(),
     (snapshot) => tui.update(snapshot),
     options.depth,
     options.updateSpeed

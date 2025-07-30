@@ -1,31 +1,29 @@
 #!/usr/bin/env -S npx tsx
 /**
- * === Order Flow Imbalance Trading Strategy v0.3.0 ===
+ * === Market Making Strategy v1.0.0 ===
  *
- * This strategy identifies temporary, unsustainable imbalances in the order book
- * and trades mean reversion when these imbalances are likely artificial.
+ * This strategy uses order flow imbalance metrics to optimize market making.
+ * Instead of directional trading, we provide liquidity and capture spreads.
  *
  * Core Theory:
- * Price discovery is the result of supply and demand imbalance at the margin.
- * We detect when order book imbalances don't match actual trade flow.
+ * Market makers profit from bid-ask spreads by providing liquidity.
+ * We use order flow metrics to predict sweep patterns and manage inventory risk.
  *
- * Entry Logic:
- * 1. Calculate Price Impact Imbalance (PII) - cost asymmetry of buying vs selling
- * 2. Calculate Order Book Pressure (OBP) - resistance to price movement
- * 3. Calculate Microstructure Flow Imbalance (MFI) - liquidity consumption rates
- * 4. Calculate Flow Toxicity (FT) - presence of informed trading
- * 5. Detect fake walls that create artificial pressure
+ * Market Making Logic:
+ * 1. PII高 → 预示大单来袭 → 提前在对手方向挂单
+ * 2. MFI激增 → 单边扫单开始 → 快速调整报价躲避
+ * 3. FT高 → 知情交易者入场 → 暂停做市避免逆向选择
+ * 4. OBP失衡 → 一侧脆弱 → 在脆弱侧挂单等待扫单
  *
- * Entry Conditions:
- * LONG: Heavy sell pressure in book BUT balanced actual flow + low toxicity
- * SHORT: Heavy buy pressure in book BUT balanced actual flow + low toxicity
+ * Signal Types:
+ * SETUP: Place both bid and ask orders with strategic offsets
+ * CANCEL: Cancel all orders when risks are detected
  *
- * Position Management:
- *  <> 30% Rule: Risk per trade never exceeds 30%
- *  <> TP: 0.5 × ATR with minimum 20bps profit
- *  <> SL: 1.0 × ATR from entry
- *  <> Position Limit: Maximum 1 concurrent position
- *  <> Max holding time: 300 seconds
+ * Risk Management:
+ *  <> Inventory limits: Balance long/short exposure
+ *  <> Toxicity monitoring: Cancel when informed traders detected
+ *  <> Dynamic spreads: Adjust based on market conditions
+ *  <> Position limits: Maximum exposure controls
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index'
@@ -45,29 +43,36 @@ dayjs.extend(utc)
 // State machine states
 type State = 'INITIALIZING' | 'SEARCHING_MARKET' | 'ENTRY_HUNTING' | 'POSITION_ACTIVE' | 'ERROR'
 
-// Position types
-interface Position {
-  symbol: string
-  side: 'LONG' | 'SHORT'
-  entryPrice: number
-  size: number
-  originalSize: number  // Track original position size
-  entryTime: number
-  tpOrderId?: string
-  slOrderId?: string
-  tpPrice: number
-  slPrice: number
-  unrealizedPnl?: number
-}
-
-// Market order types
-interface MarkerOrder {
+// Market Making Order
+interface MMOrder {
   orderId: string
   symbol: string
   side: 'BUY' | 'SELL'
   price: number
   size: number
-  timeInForce: 'GTX' // Post-only
+  status: 'NEW' | 'PARTIALLY_FILLED' | 'FILLED' | 'CANCELED'
+  type: 'BID' | 'ASK' // To track which side of spread
+}
+
+// MM Inventory Position
+interface MMPosition {
+  symbol: string
+  netPosition: number  // Positive = long inventory, negative = short
+  avgCost: number      // Average cost of inventory
+  realizedPnl: number  // Realized P&L from closed spreads
+  unrealizedPnl: number // Unrealized P&L from current inventory
+  lastUpdate: number
+}
+
+// Market Making State
+interface MMState {
+  bidOrder: MMOrder | null
+  askOrder: MMOrder | null
+  lastSignal: 'SETUP' | 'CANCEL' | 'ADJUST' | null
+  lastSignalTime: number
+  inventory: MMPosition | null
+  maxInventory: number  // Maximum allowed inventory
+  targetSpread: number  // Target spread in bps
 }
 
 // Market data
@@ -82,28 +87,27 @@ interface MarketData {
   volumeUSDT24h: number
 }
 
-class LiquidityScalpingStrategy {
+class MarketMakingStrategy {
   private state: State = 'INITIALIZING'
   private mcpClient: Client | null = null
   private websocket: BinanceWebsocket | null = null
   private userDataWS: BinanceUserDataWS | null = null
   private orderFlowImbalance: OrderFlowImbalance | null = null
-  private position: Position | null = null
-  private markerOrder: MarkerOrder | null = null
+  private mmState: MMState = {
+    bidOrder: null,
+    askOrder: null,
+    lastSignal: null,
+    lastSignalTime: 0,
+    inventory: null,
+    maxInventory: 0,
+    targetSpread: 5  // Default 5 bps
+  }
   private currentMarket: MarketData | null = null
   private accountBalance: number = 0
-  private lastPatternCheckTime: number = 0
-  private patternCheckInterval: number = 1000 // Check patterns only once per second
-  private positionStartTime: number = 0
-  private maxHoldingTime: number = 300000 // 300 seconds = 5 minutes
+  private lastSignalCheckTime: number = 0
+  private signalCheckInterval: number = 500 // Check signals every 500ms
   private orderMonitorInterval: NodeJS.Timeout | null = null
-  private lastPositionCheck: number = 0
-  private positionCheckInterval: number = 2000 // Check position status every 2 seconds
-  private lastTPSLCheck: number = 0
   private lastMarketEvaluation: number = 0
-  private tpslCheckInterval: number = 5000 // Check TP/SL orders every 5 seconds
-  private lastOrderPlacement: number = 0 // Track when we last placed orders
-  // Cleanup interval for dangling orders
   private cleanupInterval: NodeJS.Timeout | null = null
   
   // General exponential backoff for all operations
@@ -116,27 +120,21 @@ class LiquidityScalpingStrategy {
 
   async start() {
     try {
-      console.log(chalk.cyan('=== Liquidity Scalping Strategy v0.2.0 ==='))
-      console.log(chalk.yellow('Mode: LIVE TRADING'))
+      console.log(chalk.cyan('=== Market Making Strategy v1.0.0 ==='))
+      console.log(chalk.yellow('Mode: LIVE MARKET MAKING'))
+      console.log(chalk.gray('Using Order Flow Imbalance for intelligent spread optimization'))
       
       await this.initializeMCPClient()
       await this.getAccountInfo()
       
-      // Initialize user data WebSocket for real-time position updates
+      // Initialize user data WebSocket for real-time order/position updates
       await this.initializeUserDataWS()
       
-      // Check for existing positions
-      const hasExistingPosition = await this.checkExistingPositions()
+      // Check for existing orders and inventory
+      await this.checkExistingOrders()
+      await this.loadInventoryPosition()
       
-      if (hasExistingPosition) {
-        this.state = 'POSITION_ACTIVE'
-        console.log(chalk.yellow('\n⚡ Resuming management of existing position'))
-      } else {
-        this.state = 'SEARCHING_MARKET'
-      }
-      
-      // No longer needed - using WebSocket for real-time updates
-      // setInterval(() => this.syncPositionState(), 5000)
+      this.state = 'SEARCHING_MARKET'
       
       await this.mainLoop()
     } catch (error) {
@@ -257,73 +255,116 @@ class LiquidityScalpingStrategy {
       }
     }
     
-    // Check position updates
-    if (this.position && this.currentMarket) {
+    // Update inventory position
+    if (this.currentMarket) {
       const positionUpdate = update.positions.find(p => p.symbol === this.currentMarket!.symbol)
       
       if (positionUpdate) {
         const posAmt = parseFloat(positionUpdate.positionAmt)
+        const entryPrice = parseFloat(positionUpdate.entryPrice)
+        const markPrice = parseFloat(positionUpdate.markPrice)
+        const unrealizedProfit = parseFloat(positionUpdate.unRealizedProfit)
         
+        // Update inventory state
+        if (!this.mmState.inventory || this.mmState.inventory.symbol !== positionUpdate.symbol) {
+          this.mmState.inventory = {
+            symbol: positionUpdate.symbol,
+            netPosition: posAmt,
+            avgCost: entryPrice,
+            realizedPnl: 0,
+            unrealizedPnl: unrealizedProfit,
+            lastUpdate: Date.now()
+          }
+        } else {
+          // Update existing inventory
+          const oldPosition = this.mmState.inventory.netPosition
+          this.mmState.inventory.netPosition = posAmt
+          this.mmState.inventory.avgCost = entryPrice
+          this.mmState.inventory.unrealizedPnl = unrealizedProfit
+          this.mmState.inventory.lastUpdate = Date.now()
+          
+          if (Math.abs(oldPosition - posAmt) > 0.001) {
+            const change = posAmt - oldPosition
+            console.log(chalk.yellow(`  📦 Inventory changed: ${change > 0 ? '+' : ''}${change.toFixed(3)} (Net: ${posAmt > 0 ? '+' : ''}${posAmt.toFixed(3)})`))
+          }
+        }
+      } else if (this.mmState.inventory) {
         // Position closed
-        if (posAmt === 0) {
-          const pnl = this.calculatePnlBps()
-          const unRealizedProfit = parseFloat(positionUpdate.unRealizedProfit)
-          
-          console.log(chalk.green(`\n✓ Position closed via WebSocket (PnL: ${pnl.toFixed(1)}bps, $${unRealizedProfit.toFixed(2)})`))
-          console.log(chalk.gray(`  Entry: ${this.position.entryPrice.toFixed(4)}`))
-          console.log(chalk.gray(`  Mark Price: ${positionUpdate.markPrice}`))
-          
-          // Clear position and cancel all pending orders
-          await this.cancelPendingOrders()
-          await this.switchToEntryHunting()
-        }
-        // Position size changed (partial exit)
-        else if (Math.abs(posAmt) !== this.position.size && posAmt !== 0) {
-          const oldSize = this.position.size
-          this.position.size = Math.abs(posAmt)
-          console.log(chalk.yellow(`  📊 Position size changed: ${oldSize} → ${this.position.size}`))
-        }
-      } else {
-        // No position update for our symbol means position is closed
-        console.log(chalk.yellow(`\n⚠️  Position not found in WebSocket update - assuming closed`))
-        
-        // Clear position and cancel all pending orders
-        await this.cancelPendingOrders()
-        await this.switchToEntryHunting()
+        console.log(chalk.green(`  ✅ Inventory cleared`))
+        this.mmState.inventory = null
       }
     }
   }
   
   private handleOrderUpdate(update: OrderUpdate) {
-    // Log important order events
-    if (update.orderStatus === 'FILLED') {
-      console.log(chalk.green(`  ✅ Order FILLED: ${update.side} ${update.originalQuantity} @ ${update.averagePrice}`))
+    const orderId = update.orderId.toString()
+    
+    // Update our MM orders
+    if (this.mmState.bidOrder && this.mmState.bidOrder.orderId === orderId) {
+      this.mmState.bidOrder.status = update.orderStatus as any
       
-      // Check if this is our TP order
-      if (this.position && update.orderId === parseInt(this.position.tpOrderId || '0')) {
-        console.log(chalk.green(`  🎯 Take Profit hit!`))
+      if (update.orderStatus === 'FILLED') {
+        console.log(chalk.green(`  ✅ BID FILLED: ${update.originalQuantity} @ ${update.averagePrice}`))
+        this.mmState.bidOrder = null // Clear filled order
+      } else if (update.orderStatus === 'CANCELED') {
+        console.log(chalk.yellow(`  ❌ BID cancelled`))
+        this.mmState.bidOrder = null
       }
-      // Check if this is our SL order
-      else if (this.position && update.orderId === parseInt(this.position.slOrderId || '0')) {
-        console.log(chalk.red(`  🛑 Stop Loss hit!`))
+    }
+    
+    if (this.mmState.askOrder && this.mmState.askOrder.orderId === orderId) {
+      this.mmState.askOrder.status = update.orderStatus as any
+      
+      if (update.orderStatus === 'FILLED') {
+        console.log(chalk.green(`  ✅ ASK FILLED: ${update.originalQuantity} @ ${update.averagePrice}`))
+        this.mmState.askOrder = null // Clear filled order
+      } else if (update.orderStatus === 'CANCELED') {
+        console.log(chalk.yellow(`  ❌ ASK cancelled`))
+        this.mmState.askOrder = null
       }
-    } else if (update.orderStatus === 'CANCELED') {
-      // Check if important orders were cancelled
-      if (this.position) {
-        if (update.orderId === parseInt(this.position.tpOrderId || '0')) {
-          console.log(chalk.yellow(`  ⚠️  TP order cancelled`))
-          this.position.tpOrderId = undefined
-        } else if (update.orderId === parseInt(this.position.slOrderId || '0')) {
-          console.log(chalk.yellow(`  ⚠️  SL order cancelled`))
-          this.position.slOrderId = undefined
-        }
-      }
-    } else if (update.orderStatus === 'NEW') {
-      console.log(chalk.gray(`  📝 New order: ${update.side} ${update.originalQuantity} @ ${update.originalPrice}`))
+    }
+    
+    // Log other order events
+    if (update.orderStatus === 'NEW' && (orderId === this.mmState.bidOrder?.orderId || orderId === this.mmState.askOrder?.orderId)) {
+      const side = orderId === this.mmState.bidOrder?.orderId ? 'BID' : 'ASK'
+      console.log(chalk.gray(`  📝 ${side} order placed: ${update.originalQuantity} @ ${update.originalPrice}`))
     }
   }
 
-  private async checkExistingPositions(): Promise<boolean> {
+  private async checkExistingOrders(): Promise<void> {
+    try {
+      const result = await this.mcpClient!.callTool({
+        name: 'get_open_orders',
+        arguments: {}
+      })
+      
+      const response = JSON.parse((result.content as any)[0].text)
+      const orders = response.orders || []
+      
+      // Cancel any existing orders (clean slate for MM)
+      if (orders.length > 0) {
+        console.log(chalk.yellow(`\n📋 Found ${orders.length} existing orders, cancelling...`))
+        for (const order of orders) {
+          try {
+            await this.mcpClient!.callTool({
+              name: 'cancel_order',
+              arguments: {
+                symbol: order.symbol,
+                orderId: order.orderId
+              }
+            })
+            console.log(chalk.gray(`  Cancelled order #${order.orderId}`))
+          } catch (error) {
+            console.warn(chalk.yellow(`  Failed to cancel order #${order.orderId}`))
+          }
+        }
+      }
+    } catch (error) {
+      console.error(chalk.red('Error checking existing orders:'), error)
+    }
+  }
+  
+  private async loadInventoryPosition(): Promise<void> {
     try {
       const result = await this.mcpClient!.callTool({
         name: 'get_positions',
@@ -339,85 +380,39 @@ class LiquidityScalpingStrategy {
       )
       
       if (openPosition) {
-        console.log(chalk.yellow(`\n📊 Found existing position:`))
-        console.log(chalk.gray(`  Symbol: ${openPosition.symbol}`))
-        console.log(chalk.gray(`  Side: ${parseFloat(openPosition.positionAmt) > 0 ? 'LONG' : 'SHORT'}`))
-        console.log(chalk.gray(`  Size: ${Math.abs(parseFloat(openPosition.positionAmt))}`))
-        console.log(chalk.gray(`  Entry: ${openPosition.entryPrice}`))
-        console.log(chalk.gray(`  PnL: ${parseFloat(openPosition.unRealizedProfit).toFixed(2)} USDT`))
-        
-        // Reconstruct position object
         const positionAmt = parseFloat(openPosition.positionAmt)
-        const side = positionAmt > 0 ? 'LONG' : 'SHORT'
         const entryPrice = parseFloat(openPosition.entryPrice)
+        const markPrice = parseFloat(openPosition.markPrice)
+        const unrealizedProfit = parseFloat(openPosition.unRealizedProfit)
+        
+        console.log(chalk.yellow(`\n📦 Found existing inventory:`))
+        console.log(chalk.gray(`  Symbol: ${openPosition.symbol}`))
+        console.log(chalk.gray(`  Net Position: ${positionAmt > 0 ? '+' : ''}${positionAmt.toFixed(3)}`))
+        console.log(chalk.gray(`  Avg Cost: ${entryPrice.toFixed(4)}`))
+        console.log(chalk.gray(`  Mark Price: ${markPrice.toFixed(4)}`))
+        console.log(chalk.gray(`  Unrealized PnL: $${unrealizedProfit.toFixed(2)}`))
+        
+        // Initialize inventory state
+        this.mmState.inventory = {
+          symbol: openPosition.symbol,
+          netPosition: positionAmt,
+          avgCost: entryPrice,
+          realizedPnl: 0, // We don't track this historically
+          unrealizedPnl: unrealizedProfit,
+          lastUpdate: Date.now()
+        }
         
         // Get market info for this symbol
         await this.getMarketInfoForSymbol(openPosition.symbol)
         
-        // Calculate ATR-based TP/SL
-        const atrValue = this.currentMarket!.atrValue
+        // Calculate max inventory based on account balance
+        const riskPerSide = this.accountBalance * 0.1 // 10% per side
+        this.mmState.maxInventory = Math.floor(riskPerSide / markPrice)
         
-        // Initialize orderbook first to get current spread for TP calculation
-        await this.initializeOrderbook()
-        
-        // Get current orderbook for TP calculation
-        const orderbook = this.getCurrentOrderbook()
-        let tpPrice: number
-        
-        if (orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0) {
-          const bestBid = orderbook.bids[0].price
-          const bestAsk = orderbook.asks[0].price
-          const tickSize = this.currentMarket!.tickSize
-          
-          if (side === 'LONG') {
-            // For LONG: Use 0.5 ATR or minimum 20 bps profit
-            const atrTP = entryPrice + (atrValue * 0.5)
-            const minProfitTP = entryPrice * 1.002 // 20 bps minimum
-            tpPrice = this.roundToTickSize(Math.max(atrTP, minProfitTP))
-            
-          } else {
-            // For SHORT: Use 0.5 ATR or minimum 20 bps profit
-            const atrTP = entryPrice - (atrValue * 0.5)
-            const minProfitTP = entryPrice * 0.998 // 20 bps minimum
-            tpPrice = this.roundToTickSize(Math.min(atrTP, minProfitTP))
-          }
-        } else {
-          // Fallback to ATR-based TP if no orderbook data
-          tpPrice = this.roundToTickSize(
-            side === 'LONG' 
-              ? entryPrice + (atrValue * 0.5)
-              : entryPrice - (atrValue * 0.5)
-          )
-        }
-        
-        this.position = {
-          symbol: openPosition.symbol,
-          side,
-          entryPrice,
-          size: Math.abs(positionAmt),
-          originalSize: Math.abs(positionAmt), // Assume current size is original
-          entryTime: Date.now() - 60000, // Assume 1 minute old if unknown
-          tpPrice,
-          slPrice: this.roundToTickSize(
-            side === 'LONG'
-              ? entryPrice - atrValue  // SL at 1 ATR
-              : entryPrice + atrValue
-          ),
-          unrealizedPnl: parseFloat(openPosition.unRealizedProfit)
-        }
-        
-        // Check for existing TP/SL orders
-        await this.checkExistingTPSLOrders()
-        
-        // Exit timers removed - using only TP/SL
-        
-        return true
+        console.log(chalk.gray(`  Max Inventory: ±${this.mmState.maxInventory}`))
       }
-      
-      return false
     } catch (error) {
-      console.error(chalk.red('Error checking existing positions:'), error)
-      return false
+      console.error(chalk.red('Error loading inventory:'), error)
     }
   }
 
@@ -988,6 +983,174 @@ class LiquidityScalpingStrategy {
         // Continue monitoring
       }
     }, 1000) // Check every second
+  }
+  
+  private async setupMarketMaking(bidPrice: number, askPrice: number) {
+    // Cancel existing orders if prices changed significantly
+    const needsUpdate = this.mmState.bidOrder && this.mmState.askOrder && 
+      (Math.abs(this.mmState.bidOrder.price - bidPrice) > this.currentMarket!.tickSize ||
+       Math.abs(this.mmState.askOrder.price - askPrice) > this.currentMarket!.tickSize)
+    
+    if (needsUpdate) {
+      await this.cancelAllOrders()
+    }
+    
+    // Skip if we already have orders at these prices
+    if (this.mmState.bidOrder?.price === bidPrice && this.mmState.askOrder?.price === askPrice) {
+      return
+    }
+    
+    // Calculate order sizes
+    const orderSize = this.calculateOrderSize()
+    if (orderSize === 0) {
+      return
+    }
+    
+    // Check inventory limits before placing orders
+    const currentInventory = this.mmState.inventory?.netPosition || 0
+    const canBuy = currentInventory < this.mmState.maxInventory * 0.8
+    const canSell = currentInventory > -this.mmState.maxInventory * 0.8
+    
+    // Place bid order if we can buy
+    if (!this.mmState.bidOrder && canBuy) {
+      try {
+        const result = await this.mcpClient!.callTool({
+          name: 'place_order',
+          arguments: {
+            symbol: this.currentMarket!.symbol,
+            side: 'BUY',
+            type: 'LIMIT',
+            quantity: orderSize,
+            price: bidPrice,
+            timeInForce: 'GTX' // Post-only
+          }
+        })
+        
+        const order = JSON.parse((result.content as any)[0].text)
+        if (order.orderId) {
+          this.mmState.bidOrder = {
+            orderId: order.orderId.toString(),
+            symbol: order.symbol,
+            side: 'BUY',
+            price: parseFloat(order.price),
+            size: parseFloat(order.origQty),
+            status: 'NEW',
+            type: 'BID'
+          }
+          console.log(chalk.green(`  ✅ Placed BID @ ${bidPrice.toFixed(4)}`))
+        }
+      } catch (error: any) {
+        if (!error.message?.includes('could not be executed as maker')) {
+          console.error(chalk.red('  Failed to place bid:'), error.message)
+        }
+      }
+    }
+    
+    // Place ask order if we can sell
+    if (!this.mmState.askOrder && canSell) {
+      try {
+        const result = await this.mcpClient!.callTool({
+          name: 'place_order',
+          arguments: {
+            symbol: this.currentMarket!.symbol,
+            side: 'SELL',
+            type: 'LIMIT',
+            quantity: orderSize,
+            price: askPrice,
+            timeInForce: 'GTX' // Post-only
+          }
+        })
+        
+        const order = JSON.parse((result.content as any)[0].text)
+        if (order.orderId) {
+          this.mmState.askOrder = {
+            orderId: order.orderId.toString(),
+            symbol: order.symbol,
+            side: 'SELL',
+            price: parseFloat(order.price),
+            size: parseFloat(order.origQty),
+            status: 'NEW',
+            type: 'ASK'
+          }
+          console.log(chalk.green(`  ✅ Placed ASK @ ${askPrice.toFixed(4)}`))
+        }
+      } catch (error: any) {
+        if (!error.message?.includes('could not be executed as maker')) {
+          console.error(chalk.red('  Failed to place ask:'), error.message)
+        }
+      }
+    }
+  }
+  
+  private async cancelAllOrders() {
+    const promises = []
+    
+    if (this.mmState.bidOrder) {
+      promises.push(
+        this.mcpClient!.callTool({
+          name: 'cancel_order',
+          arguments: {
+            symbol: this.mmState.bidOrder.symbol,
+            orderId: this.mmState.bidOrder.orderId
+          }
+        }).then(() => {
+          console.log(chalk.yellow(`  ❌ Cancelled BID #${this.mmState.bidOrder!.orderId}`))
+          this.mmState.bidOrder = null
+        }).catch(() => {
+          // Order might already be filled or cancelled
+          this.mmState.bidOrder = null
+        })
+      )
+    }
+    
+    if (this.mmState.askOrder) {
+      promises.push(
+        this.mcpClient!.callTool({
+          name: 'cancel_order',
+          arguments: {
+            symbol: this.mmState.askOrder.symbol,
+            orderId: this.mmState.askOrder.orderId
+          }
+        }).then(() => {
+          console.log(chalk.yellow(`  ❌ Cancelled ASK #${this.mmState.askOrder!.orderId}`))
+          this.mmState.askOrder = null
+        }).catch(() => {
+          // Order might already be filled or cancelled
+          this.mmState.askOrder = null
+        })
+      )
+    }
+    
+    if (promises.length > 0) {
+      await Promise.allSettled(promises)
+    }
+  }
+  
+  private calculateOrderSize(): number {
+    // Base size on account balance and inventory
+    const baseRisk = Math.min(this.accountBalance * 0.02, 20) // 2% of balance, max $20
+    let orderSize = baseRisk / this.currentMarket!.price
+    
+    // Adjust for inventory skew
+    if (this.mmState.inventory) {
+      const inventoryRatio = this.mmState.inventory.netPosition / this.mmState.maxInventory
+      
+      // Reduce size when approaching inventory limits
+      if (Math.abs(inventoryRatio) > 0.5) {
+        orderSize *= (1 - Math.abs(inventoryRatio) * 0.5)
+      }
+    }
+    
+    // Round down to step size
+    const rounded = this.roundToStepSize(orderSize)
+    
+    // Check minimum notional (Binance requires min $5 per trade)
+    const notional = rounded * this.currentMarket!.price
+    if (notional < 5) {
+      return this.roundToStepSize(5.1 / this.currentMarket!.price) // Just above minimum
+    }
+    
+    return rounded
   }
 
   private async cancelMarkerOrder() {
@@ -2061,17 +2224,78 @@ class LiquidityScalpingStrategy {
     
     // Run initial cleanup after 5 seconds
     setTimeout(() => this.cleanupDanglingOrders(), 5000)
+    
+    // Display MM status every 10 seconds
+    setInterval(() => {
+      this.displayMMStatus()
+    }, 10000)
+  }
+  
+  private displayMMStatus() {
+    console.log(chalk.cyan('\n━━━ Market Making Status ━━━'))
+    
+    if (this.currentMarket) {
+      console.log(chalk.gray(`Symbol: ${this.currentMarket.symbol}`))
+      console.log(chalk.gray(`Account Balance: $${this.accountBalance.toFixed(2)}`))
+    }
+    
+    if (this.mmState.inventory) {
+      const inv = this.mmState.inventory
+      console.log(chalk.yellow(`Inventory: ${inv.netPosition > 0 ? '+' : ''}${inv.netPosition.toFixed(3)} @ ${inv.avgCost.toFixed(4)}`))
+      console.log(chalk.gray(`Unrealized PnL: $${inv.unrealizedPnl.toFixed(2)}`))
+    } else {
+      console.log(chalk.gray('Inventory: None'))
+    }
+    
+    if (this.mmState.bidOrder || this.mmState.askOrder) {
+      console.log(chalk.green('Active Orders:'))
+      if (this.mmState.bidOrder) {
+        console.log(chalk.gray(`  BID: ${this.mmState.bidOrder.size} @ ${this.mmState.bidOrder.price.toFixed(4)}`))
+      }
+      if (this.mmState.askOrder) {
+        console.log(chalk.gray(`  ASK: ${this.mmState.askOrder.size} @ ${this.mmState.askOrder.price.toFixed(4)}`))
+      }
+    } else {
+      console.log(chalk.gray('Active Orders: None'))
+    }
+    
+    if (this.mmState.lastSignal) {
+      console.log(chalk.gray(`Last Signal: ${this.mmState.lastSignal}`))
+    }
   }
   
   private async cleanupDanglingOrders() {
     try {
-      // Different cleanup logic based on state
-      if (this.state === 'POSITION_ACTIVE' && this.position) {
-        // When we have a position, cleanup any orders that aren't our TP/SL
-        await this.cleanupPositionOrders()
-      } else if (this.state === 'ENTRY_HUNTING') {
-        // When hunting for entry, cleanup orders from other symbols
-        await this.cleanupEntryHuntingOrders()
+      // Get all open orders
+      const result = await this.mcpClient!.callTool({
+        name: 'get_open_orders',
+        arguments: {}
+      })
+      
+      const response = JSON.parse((result.content as any)[0].text)
+      const orders = response.orders || []
+      
+      // Cancel orders without corresponding state
+      for (const order of orders) {
+        const orderId = order.orderId.toString()
+        const isTracked = 
+          (this.mmState.bidOrder && this.mmState.bidOrder.orderId === orderId) ||
+          (this.mmState.askOrder && this.mmState.askOrder.orderId === orderId)
+        
+        if (!isTracked && !order.reduceOnly) {
+          console.log(chalk.yellow(`  🧽 Cleaning up dangling order #${orderId}`))
+          try {
+            await this.mcpClient!.callTool({
+              name: 'cancel_order',
+              arguments: {
+                symbol: order.symbol,
+                orderId: order.orderId
+              }
+            })
+          } catch (error) {
+            // Ignore errors
+          }
+        }
       }
     } catch (error) {
       // Silently ignore cleanup errors
@@ -2363,7 +2587,7 @@ const program = new Command()
   .version('0.2.0')
   .option('-v, --verbose', 'Enable verbose logging', false)
   .action(async (options) => {
-    const strategy = new LiquidityScalpingStrategy()
+    const strategy = new MarketMakingStrategy()
     
     // Handle graceful shutdown
     process.on('SIGINT', async () => {

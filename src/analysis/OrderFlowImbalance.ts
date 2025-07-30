@@ -18,9 +18,11 @@ interface ImbalanceMetrics {
   fakeAskWall: boolean
 }
 
-interface EntrySignal {
-  side: 'BUY' | 'SELL' | null
-  entryPrice: number
+interface MMSignal {
+  type: 'SETUP' | 'CANCEL' | 'ADJUST' | null
+  askPrice?: number
+  bidPrice?: number
+  reason?: string
   metrics: ImbalanceMetrics
 }
 
@@ -246,12 +248,12 @@ export class OrderFlowImbalance {
   }
   
   /**
-   * Update with new orderbook and generate entry signal
+   * Update with new orderbook and generate market making signal
    */
-  update(orderbook: OrderbookSnapshot, newTrades: Trade[] = []): EntrySignal {
+  update(orderbook: OrderbookSnapshot, newTrades: Trade[] = []): MMSignal {
     // Check if orderbook is valid
     if (!orderbook.bids.length || !orderbook.asks.length) {
-      return { side: null, entryPrice: 0, metrics: {} as ImbalanceMetrics }
+      return { type: null, metrics: {} as ImbalanceMetrics }
     }
     
     // Update history
@@ -265,7 +267,7 @@ export class OrderFlowImbalance {
     
     // Check market regime
     if (!this.checkMarketRegime(orderbook)) {
-      return { side: null, entryPrice: 0, metrics: {} as ImbalanceMetrics }
+      return { type: null, metrics: {} as ImbalanceMetrics }
     }
     
     // Calculate metrics
@@ -291,41 +293,94 @@ export class OrderFlowImbalance {
       fakeAskWall
     }
     
-    // Entry conditions for LONG (buy) - STRICTER THRESHOLDS
-    const buyConditions = [
-      priceImpactImbalance < -0.8,  // VERY heavy sell pressure in book (was -0.6)
-      Math.abs(microstructureFlowImbalance) < 0.2,  // More balanced flow required (was 0.3)
-      flowToxicity < 0.3,  // Lower toxicity threshold (was 0.4)
-      fakeAskWall,  // Potential fake sell wall
-      flowDirection > -0.5,  // Stricter flow direction (was -0.7)
-      orderbookPressure < -0.4  // Additional condition: bid resistance must be stronger
-    ]
+    // MARKET MAKING LOGIC (not directional trading)
+    const midPrice = (orderbook.bids[0].price + orderbook.asks[0].price) / 2
+    const currentSpread = orderbook.asks[0].price - orderbook.bids[0].price
     
-    // Entry conditions for SHORT (sell) - STRICTER THRESHOLDS
-    const sellConditions = [
-      priceImpactImbalance > 0.8,  // VERY heavy buy pressure in book (was 0.6)
-      Math.abs(microstructureFlowImbalance) < 0.2,  // More balanced flow required (was 0.3)
-      flowToxicity < 0.3,  // Lower toxicity threshold (was 0.4)
-      fakeBidWall,  // Potential fake buy wall
-      flowDirection < 0.5,  // Stricter flow direction (was 0.7)
-      orderbookPressure > 0.4  // Additional condition: ask resistance must be stronger
-    ]
-    
-    // Generate signals - REQUIRE ALL CONDITIONS
-    const buyScore = buyConditions.filter(c => c).length
-    const sellScore = sellConditions.filter(c => c).length
-    
-    if (buyScore >= 5) {  // Increased from 4 to 5 (need 5 out of 6 conditions)
-      // Place buy order one tick below best bid
-      const entryPrice = orderbook.bids[0].price - this.tickSize
-      return { side: 'BUY', entryPrice, metrics }
-    } else if (sellScore >= 5) {  // Increased from 4 to 5
-      // Place sell order one tick above best ask
-      const entryPrice = orderbook.asks[0].price + this.tickSize
-      return { side: 'SELL', entryPrice, metrics }
+    // 1. CANCEL CONDITIONS - Risk management first
+    if (flowToxicity > 0.6) {
+      return { 
+        type: 'CANCEL', 
+        reason: 'High flow toxicity - informed traders detected',
+        metrics 
+      }
     }
     
-    return { side: null, entryPrice: 0, metrics }
+    if (Math.abs(microstructureFlowImbalance) > 0.8) {
+      return { 
+        type: 'CANCEL', 
+        reason: 'Extreme MFI - one-sided sweep in progress',
+        metrics 
+      }
+    }
+    
+    // 2. SETUP CONDITIONS - Look for opportunities
+    // High PII indicates incoming large orders - set up on opposite side
+    if (Math.abs(priceImpactImbalance) > 0.7) {
+      let askOffset = this.tickSize
+      let bidOffset = this.tickSize
+      
+      if (priceImpactImbalance > 0.7) {
+        // Heavy buy pressure in book - large sells coming
+        // Place ask closer to catch the sells
+        askOffset = this.tickSize
+        bidOffset = this.tickSize * 3  // Wider bid to avoid getting hit
+      } else if (priceImpactImbalance < -0.7) {
+        // Heavy sell pressure in book - large buys coming  
+        // Place bid closer to catch the buys
+        bidOffset = this.tickSize
+        askOffset = this.tickSize * 3  // Wider ask to avoid getting hit
+      }
+      
+      return {
+        type: 'SETUP',
+        askPrice: midPrice + askOffset,
+        bidPrice: midPrice - bidOffset,
+        reason: `PII imbalance detected: ${priceImpactImbalance.toFixed(2)}`,
+        metrics
+      }
+    }
+    
+    // OBP imbalance - one side is vulnerable
+    if (Math.abs(orderbookPressure) > 0.5) {
+      let askOffset = this.tickSize * 2
+      let bidOffset = this.tickSize * 2
+      
+      if (orderbookPressure > 0.5) {
+        // Bid side stronger - asks are vulnerable
+        askOffset = this.tickSize  // Tighter ask to catch sweep
+        bidOffset = this.tickSize * 3
+      } else {
+        // Ask side stronger - bids are vulnerable
+        bidOffset = this.tickSize  // Tighter bid to catch sweep
+        askOffset = this.tickSize * 3
+      }
+      
+      return {
+        type: 'SETUP',
+        askPrice: midPrice + askOffset,
+        bidPrice: midPrice - bidOffset,
+        reason: `OBP imbalance: ${orderbookPressure.toFixed(2)}`,
+        metrics
+      }
+    }
+    
+    // 3. NORMAL MARKET MAKING - Balanced conditions
+    if (flowToxicity < 0.3 && Math.abs(microstructureFlowImbalance) < 0.3) {
+      // Safe to make markets with normal spreads
+      const normalOffset = Math.max(this.tickSize * 2, currentSpread * 0.3)
+      
+      return {
+        type: 'SETUP',
+        askPrice: midPrice + normalOffset,
+        bidPrice: midPrice - normalOffset,
+        reason: 'Normal market conditions',
+        metrics
+      }
+    }
+    
+    // Default: No signal
+    return { type: null, metrics }
   }
   
   /**

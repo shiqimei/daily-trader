@@ -21,6 +21,14 @@ export class BinanceWebsocket {
   private reconnectAttempts: number = 0
   private maxReconnectAttempts: number = 5
   private reconnectDelay: number = 1000
+  
+  // Trade callback
+  public onTrade?: (trade: {
+    price: number
+    quantity: number
+    isBuyerMaker: boolean
+    timestamp: number
+  }) => void
 
   constructor(
     private readonly symbol: string,
@@ -34,8 +42,12 @@ export class BinanceWebsocket {
   }
 
   private connectWebSocket(): void {
-    const streamName = `${this.symbol.toLowerCase()}@depth@${this.updateSpeed}ms`
-    const wsUrl = `wss://fstream.binance.com/ws/${streamName}`
+    // Subscribe to both depth and trade streams
+    const streams = [
+      `${this.symbol.toLowerCase()}@depth@${this.updateSpeed}ms`,
+      `${this.symbol.toLowerCase()}@aggTrade`
+    ]
+    const wsUrl = `wss://fstream.binance.com/stream?streams=${streams.join('/')}`
 
     console.log(`Connecting to WebSocket: ${wsUrl}`)
 
@@ -48,8 +60,16 @@ export class BinanceWebsocket {
 
     this.ws.on('message', (data: Buffer) => {
       try {
-        const update: BinanceDepthUpdate = JSON.parse(data.toString())
-        this.processUpdate(update)
+        const message = JSON.parse(data.toString())
+        
+        // Multi-stream format has data field
+        if (message.stream && message.data) {
+          if (message.stream.includes('@depth')) {
+            this.processUpdate(message.data as BinanceDepthUpdate)
+          } else if (message.stream.includes('@aggTrade')) {
+            this.processTrade(message.data)
+          }
+        }
       } catch (error) {
         console.error('Failed to process WebSocket message:', error)
       }
@@ -158,6 +178,17 @@ export class BinanceWebsocket {
     setTimeout(() => {
       this.connectWebSocket()
     }, delay)
+  }
+  
+  private processTrade(trade: any): void {
+    if (this.onTrade) {
+      this.onTrade({
+        price: parseFloat(trade.p),
+        quantity: parseFloat(trade.q),
+        isBuyerMaker: trade.m,
+        timestamp: trade.T
+      })
+    }
   }
 
   disconnect(): void {

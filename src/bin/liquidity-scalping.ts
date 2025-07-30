@@ -1,34 +1,31 @@
 #!/usr/bin/env -S npx tsx
 /**
- * === liquidity scalping strategy v0.2.0 ===
+ * === Order Flow Imbalance Trading Strategy v0.3.0 ===
  *
- * This is a self-contained liquidity scalping strategy cli program driven by dynamic orderbooks.
- * Our client is using standard mcp client that integrates mcpServers/binance.ts mcp server.
- * Internally, we have a state-machine to manage states and the current state.
+ * This strategy identifies temporary, unsustainable imbalances in the order book
+ * and trades mean reversion when these imbalances are likely artificial.
  *
- * 1. We look for suitable markets that have proper Volatility (ATR) and Liquidity (Spread).
- *    Using `get_top_symbols` with 40bps <= atr_bps_5m <= 80bps sorted by atr_bps_5m aesc.
- * 2. If there's no active positions. It's entry-hunting mode - We choose the first market in the results
- *    and subscribe orderbook websocket events to look for entry opportunities (check OrderbookDynamics.ts):
- *      - If there's no marker order and spread spread_ticks > 1 (there's a spread gap):
- *          <> If there's bids LIQUIDITY_SURGE or asks LIQUIDITY_WITHDRAWAL, we create a long marker-only bids order just below best_ask;
- *          <> If there's asks LIQUIDITY_SURGE or bids LIQUIDITY_WITHDRAWAL, we create a short marker-only asks order just above best_bid.
- *          If marker-only order can't be placed, we wait for next chance.
- *      - If thre're an active marker order:
- *          <> If received any MARKET_MAKER_SHIFT event, cancel the order;
- *          <> If our active marker order is long, and LIQUIDITY_SURGE is asks or LIQUIDITY_WITHDRAWAL is bids, cancel the order;
- *          <> If our active marker order is short, and LIQUIDITY_SURGE is bids or LIQUIDITY_WITHDRAWAL is asks, cancel the order.
- * 3. Once a new position open:
- *      <> TP: we set TP to an atr_bps_5m above or below immediately. It should be a marker-only order.
- *      <> SL: we set SL to a half of an atr_bps_5m above or below immediately. It should be a market order.
- * 4. When we have an active position, keep monitoring the price:
- * 5. Loop above steps, if we are in entry-hunting mode, just to make sure we entry following rules listed above.
+ * Core Theory:
+ * Price discovery is the result of supply and demand imbalance at the margin.
+ * We detect when order book imbalances don't match actual trade flow.
+ *
+ * Entry Logic:
+ * 1. Calculate Price Impact Imbalance (PII) - cost asymmetry of buying vs selling
+ * 2. Calculate Order Book Pressure (OBP) - resistance to price movement
+ * 3. Calculate Microstructure Flow Imbalance (MFI) - liquidity consumption rates
+ * 4. Calculate Flow Toxicity (FT) - presence of informed trading
+ * 5. Detect fake walls that create artificial pressure
+ *
+ * Entry Conditions:
+ * LONG: Heavy sell pressure in book BUT balanced actual flow + low toxicity
+ * SHORT: Heavy buy pressure in book BUT balanced actual flow + low toxicity
  *
  * Position Management:
- *  <> 30% Rule: Risk per trade never exceeds 30%, use calculate_position_size for position calculation
- *  <> TP/SL: Set immediately after entry, no exceptions
- *  <> R:R = 0.5ATR : ATR = 0.5
+ *  <> 30% Rule: Risk per trade never exceeds 30%
+ *  <> TP: 0.5 × ATR with minimum 20bps profit
+ *  <> SL: 1.0 × ATR from entry
  *  <> Position Limit: Maximum 1 concurrent position
+ *  <> Max holding time: 300 seconds
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index'
@@ -37,8 +34,8 @@ import chalk from 'chalk'
 import { Command } from 'commander'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc.js'
-import { OrderbookDynamics } from '../analysis/OrderbookDynamics'
-import { DynamicPattern, OrderbookSnapshot, TradingConfig } from '../types/orderbook'
+import { OrderFlowImbalance } from '../analysis/OrderFlowImbalance'
+import { OrderbookSnapshot } from '../types/orderbook'
 import { BinanceWebsocket } from '../websocket/BinanceWebsocket'
 import { BinanceUserDataWS, AccountUpdate, OrderUpdate } from '../websocket/BinanceUserDataWS'
 import { ExponentialBackoff } from '../utils/ExponentialBackoff'
@@ -90,7 +87,7 @@ class LiquidityScalpingStrategy {
   private mcpClient: Client | null = null
   private websocket: BinanceWebsocket | null = null
   private userDataWS: BinanceUserDataWS | null = null
-  private orderbookDynamics: OrderbookDynamics | null = null
+  private orderFlowImbalance: OrderFlowImbalance | null = null
   private position: Position | null = null
   private markerOrder: MarkerOrder | null = null
   private currentMarket: MarketData | null = null
@@ -98,7 +95,7 @@ class LiquidityScalpingStrategy {
   private lastPatternCheckTime: number = 0
   private patternCheckInterval: number = 1000 // Check patterns only once per second
   private positionStartTime: number = 0
-  // private exitTimeouts: NodeJS.Timeout[] = [] // Removed - no time-based exits
+  private maxHoldingTime: number = 300000 // 300 seconds = 5 minutes
   private orderMonitorInterval: NodeJS.Timeout | null = null
   private lastPositionCheck: number = 0
   private positionCheckInterval: number = 2000 // Check position status every 2 seconds
@@ -364,7 +361,7 @@ class LiquidityScalpingStrategy {
         await this.initializeOrderbook()
         
         // Get current orderbook for TP calculation
-        const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+        const orderbook = this.getCurrentOrderbook()
         let tpPrice: number
         
         if (orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0) {
@@ -664,9 +661,9 @@ class LiquidityScalpingStrategy {
         this.websocket = null
       }
       
-      // Clear orderbook dynamics
-      if (this.orderbookDynamics) {
-        this.orderbookDynamics = null
+      // Clear order flow analysis
+      if (this.orderFlowImbalance) {
+        this.orderFlowImbalance = null
       }
       
       // Get fresh top symbols
@@ -721,30 +718,50 @@ class LiquidityScalpingStrategy {
       this.websocket.disconnect()
     }
     
-    const config: TradingConfig = {
-      symbol: this.currentMarket!.symbol,
-      tickSize: this.currentMarket!.tickSize,
-      minOrderSize: this.currentMarket!.minOrderSize,
-      makerFee: 0.0002, // 0.02%
-      takerFee: 0.0004, // 0.04%
-      atrBps: this.currentMarket!.atrBps,
-      targetWinRate: 0.60 // 60% win rate target
-    }
+    // Calculate average spread (in price units)
+    const avgSpreadPrice = this.currentMarket!.price * 0.0002 // Assume 2bps spread
     
-    this.orderbookDynamics = new OrderbookDynamics(config)
+    // Initialize Order Flow Imbalance analyzer
+    this.orderFlowImbalance = new OrderFlowImbalance(
+      this.currentMarket!.tickSize,
+      this.currentMarket!.atrValue,
+      this.currentMarket!.minOrderSize * 10, // Assume avg trade is 10x min size
+      avgSpreadPrice
+    )
     
     // Create websocket with callback
     this.websocket = new BinanceWebsocket(
       this.currentMarket!.symbol,
       (snapshot: OrderbookSnapshot) => {
-        this.orderbookDynamics!.update(snapshot)
+        // Store latest orderbook
+        this.lastOrderbook = snapshot
+        
+        // Update order flow analysis with new orderbook
+        if (this.orderFlowImbalance && this.state === 'ENTRY_HUNTING') {
+          const signal = this.orderFlowImbalance.update(snapshot)
+          if (signal.side && !this.markerOrder) {
+            this.handleEntrySignal(signal).catch(console.error)
+          }
+        }
       },
       20, // depth levels
       100 // update speed
     )
     
+    // Subscribe to trades for flow toxicity analysis
+    this.websocket.onTrade = (trade: any) => {
+      if (this.orderFlowImbalance) {
+        this.orderFlowImbalance.addTrade(
+          trade.price,
+          trade.quantity,
+          trade.isBuyerMaker,
+          trade.timestamp
+        )
+      }
+    }
+    
     await this.websocket.connect()
-    console.log(chalk.green(`✓ Orderbook websocket connected for ${this.currentMarket!.symbol}`))
+    console.log(chalk.green(`✓ Order flow websocket connected for ${this.currentMarket!.symbol}`))
   }
 
   private async huntForEntry() {
@@ -755,67 +772,65 @@ class LiquidityScalpingStrategy {
       return
     }
     
-    const now = Date.now()
-    if (now - this.lastPatternCheckTime < this.patternCheckInterval) {
-      return
-    }
-    this.lastPatternCheckTime = now
-    
-    const patterns = this.orderbookDynamics!.getCurrentPatterns()
-    const derivatives = this.orderbookDynamics!.getCurrentDerivatives()
-    const stats = this.orderbookDynamics!.getStats()
-    
-    // Check spread condition (must be > 2 ticks for safety)
-    const spreadTicks = stats.avgSpread / this.currentMarket!.tickSize
-    if (spreadTicks <= 2) {
-      return // No sufficient gap to place maker order
+    // Order flow analysis is handled in the WebSocket callback
+    // This method is now just for state management
+  }
+  
+  private async handleEntrySignal(signal: any) {
+    if (this.markerOrder || this.position) {
+      return // Already have an order or position
     }
     
-    // Look for entry patterns
-    for (const pattern of patterns) {
-      if (this.markerOrder) {
-        // Check if we should cancel existing marker order
-        if (this.shouldCancelMarkerOrder(pattern)) {
-          await this.cancelMarkerOrder()
+    // Log the signal details
+    console.log(chalk.cyan('\n📊 Order Flow Imbalance Signal Detected:'))
+    console.log(chalk.gray(`  Side: ${signal.side}`))
+    console.log(chalk.gray(`  Entry: ${signal.entryPrice.toFixed(4)}`))
+    console.log(chalk.gray(`  PII: ${signal.metrics.priceImpactImbalance.toFixed(2)}`))
+    console.log(chalk.gray(`  Flow Toxicity: ${signal.metrics.flowToxicity.toFixed(2)}`))
+    console.log(chalk.gray(`  Fake Walls: Bid=${signal.metrics.fakeBidWall}, Ask=${signal.metrics.fakeAskWall}`))
+    
+    // Place marker order
+    await this.placeMarkerOrder({
+      side: signal.side,
+      price: signal.entryPrice
+    })
+  }
+  
+  private lastOrderbook: OrderbookSnapshot | null = null
+  
+  private getCurrentOrderbook(): OrderbookSnapshot | null {
+    return this.lastOrderbook
+  }
+  
+  private async closePosition(percentage: number) {
+    if (!this.position) return
+    
+    try {
+      await this.mcpClient!.callTool({
+        name: 'close_position',
+        arguments: {
+          symbol: this.position.symbol,
+          percentage
         }
-      } else {
-        // Check if we should place new marker order
-        const signal = this.checkEntrySignal(pattern)
-        if (signal) {
-          await this.placeMarkerOrder(signal)
-        }
-      }
+      })
+      
+      console.log(chalk.green(`✓ Position closed (${percentage}%)`))
+      
+      // Cancel all pending orders
+      await this.cancelPendingOrders()
+      
+      // Clear position
+      this.position = null
+      this.clearExitTimers()
+      
+      // Switch to entry hunting
+      await this.switchToEntryHunting()
+      
+    } catch (error) {
+      console.error(chalk.red('Failed to close position:'), error)
     }
   }
 
-  private checkEntrySignal(pattern: DynamicPattern): { side: 'BUY' | 'SELL', price: number } | null {
-    // Get current orderbook
-    const orderbook = this.orderbookDynamics!.getCurrentOrderbook()
-    if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0) {
-      return null
-    }
-    
-    const bestBid = orderbook.bids[0].price
-    const bestAsk = orderbook.asks[0].price
-    
-    // Long signal: bids LIQUIDITY_SURGE or asks LIQUIDITY_WITHDRAWAL (increased strength requirements)
-    if ((pattern.type === 'LIQUIDITY_SURGE' && pattern.side === 'BID' && pattern.strength > 80) ||
-        (pattern.type === 'LIQUIDITY_WITHDRAWAL' && pattern.side === 'ASK' && pattern.strength > 85)) {
-      // Place buy order just below best ask (one tick inside the spread)
-      const price = this.roundToTickSize(bestAsk - this.currentMarket!.tickSize)
-      return { side: 'BUY', price }
-    }
-    
-    // Short signal: asks LIQUIDITY_SURGE or bids LIQUIDITY_WITHDRAWAL (increased strength requirements)
-    if ((pattern.type === 'LIQUIDITY_SURGE' && pattern.side === 'ASK' && pattern.strength > 80) ||
-        (pattern.type === 'LIQUIDITY_WITHDRAWAL' && pattern.side === 'BID' && pattern.strength > 85)) {
-      // Place sell order just above best bid (one tick inside the spread)
-      const price = this.roundToTickSize(bestBid + this.currentMarket!.tickSize)
-      return { side: 'SELL', price }
-    }
-    
-    return null
-  }
 
   private roundToTickSize(price: number): number {
     const tickSize = this.currentMarket!.tickSize
@@ -850,30 +865,6 @@ class LiquidityScalpingStrategy {
     return parseFloat(rounded.toFixed(precision))
   }
 
-  private shouldCancelMarkerOrder(pattern: DynamicPattern): boolean {
-    if (!this.markerOrder) return false
-    
-    // Cancel on MARKET_MAKER_SHIFT
-    if (pattern.type === 'MARKET_MAKER_SHIFT') {
-      return true
-    }
-    
-    // Cancel long marker if opposite signal
-    if (this.markerOrder.side === 'BUY' &&
-        ((pattern.type === 'LIQUIDITY_SURGE' && pattern.side === 'ASK') ||
-         (pattern.type === 'LIQUIDITY_WITHDRAWAL' && pattern.side === 'BID'))) {
-      return true
-    }
-    
-    // Cancel short marker if opposite signal
-    if (this.markerOrder.side === 'SELL' &&
-        ((pattern.type === 'LIQUIDITY_SURGE' && pattern.side === 'BID') ||
-         (pattern.type === 'LIQUIDITY_WITHDRAWAL' && pattern.side === 'ASK'))) {
-      return true
-    }
-    
-    return false
-  }
 
   private async placeMarkerOrder(signal: { side: 'BUY' | 'SELL', price: number }) {
     const operationKey = `marker_order_${this.currentMarket!.symbol}`
@@ -891,7 +882,7 @@ class LiquidityScalpingStrategy {
     }
     
     // Validate order price is reasonable (within 10% of current price)
-    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    const orderbook = this.getCurrentOrderbook()
     if (orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0) {
       const midPrice = (orderbook.bids[0].price + orderbook.asks[0].price) / 2
       const priceRatio = signal.price / midPrice
@@ -1055,7 +1046,7 @@ class LiquidityScalpingStrategy {
     const atrValue = this.currentMarket!.atrValue
     
     // Get current orderbook for TP calculation
-    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    const orderbook = this.getCurrentOrderbook()
     let tpPrice: number
     
     if (orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0) {
@@ -1209,8 +1200,17 @@ class LiquidityScalpingStrategy {
       return
     }
     
-    // Periodically verify position still exists (every 10 seconds)
     const now = Date.now()
+    const holdingTime = now - this.positionStartTime
+    
+    // Check max holding time (5 minutes)
+    if (holdingTime > this.maxHoldingTime) {
+      console.log(chalk.yellow(`\n⚠️  Max holding time (${this.maxHoldingTime/1000}s) exceeded, closing position`))
+      await this.closePosition(100)
+      return
+    }
+    
+    // Periodically verify position still exists (every 10 seconds)
     if (now - this.lastPositionCheck > 10000) {
       this.lastPositionCheck = now
       
@@ -1242,7 +1242,7 @@ class LiquidityScalpingStrategy {
     }
     
     // Get current price from orderbook
-    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    const orderbook = this.getCurrentOrderbook()
     if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0) {
       return // No valid orderbook data
     }
@@ -1318,7 +1318,7 @@ class LiquidityScalpingStrategy {
     
     try {
       // Log current position state
-      const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+      const orderbook = this.getCurrentOrderbook()
       if (orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0) {
         const currentPrice = (orderbook.bids[0].price + orderbook.asks[0].price) / 2
         const distanceToTP = this.position.side === 'LONG' 
@@ -1435,7 +1435,7 @@ class LiquidityScalpingStrategy {
     console.log(chalk.yellow('TP order missing, placing now...'))
     
     // Recalculate TP price based on current orderbook to avoid crossing spread
-    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    const orderbook = this.getCurrentOrderbook()
     let currentTPPrice = this.position.tpPrice
     
     if (orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0) {
@@ -1787,7 +1787,7 @@ class LiquidityScalpingStrategy {
         // If we have negative PnL and neither TP nor SL was hit, this might be an error
         if (this.position && pnl < 0) {
           // Get current price from orderbook
-          const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+          const orderbook = this.getCurrentOrderbook()
           const currentPrice = orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0 
             ? (orderbook.bids[0].price + orderbook.asks[0].price) / 2 
             : 0
@@ -1807,7 +1807,7 @@ class LiquidityScalpingStrategy {
         
         // Position genuinely closed
         // Get current price from orderbook
-        const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+        const orderbook = this.getCurrentOrderbook()
         const closedPrice = orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0 
           ? (orderbook.bids[0].price + orderbook.asks[0].price) / 2 
           : this.currentMarket?.price || 0
@@ -1860,7 +1860,7 @@ class LiquidityScalpingStrategy {
     if (!this.position) return 0
     
     // Get current price from orderbook
-    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    const orderbook = this.getCurrentOrderbook()
     if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0) {
       return 0
     }
@@ -1922,7 +1922,7 @@ class LiquidityScalpingStrategy {
     }
     
     // Get current price from orderbook
-    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    const orderbook = this.getCurrentOrderbook()
     if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0) {
       return this.currentMarket!.minOrderSize
     }

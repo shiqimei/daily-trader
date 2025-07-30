@@ -404,7 +404,7 @@ class OrderbookTUI {
 const program = new Command();
 
 program
-  .name('orderbook-tui')
+  .name('orderbook')
   .description('Real-time orderbook dynamics analyzer with TUI')
   .version('1.0.0');
 

@@ -29,7 +29,7 @@ A comprehensive algorithmic trading system for Binance futures with multiple str
    npm run liquidity-scalping
    
    # Orderbook TUI
-   npm run orderbook-tui
+   pnpm orderbook
    
    # Trading System CLI
    npm run trading-system-cli

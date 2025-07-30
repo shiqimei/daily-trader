@@ -1,6 +1,6 @@
-# Orderbook Dynamics CLI
+# Orderbook TUI
 
-A real-time orderbook analyzer that monitors velocity, patterns, and generates trading signals based on orderbook dynamics. Available in two versions: standard CLI and TUI (Terminal User Interface).
+A real-time orderbook analyzer with Terminal User Interface (TUI) that monitors velocity, patterns, and generates trading signals based on orderbook dynamics.
 
 ## Features
 
@@ -18,25 +18,15 @@ A real-time orderbook analyzer that monitors velocity, patterns, and generates t
 
 ## Usage
 
-### Standard CLI (with flickering)
 ```bash
 # Basic usage
-npm run orderbook BTCUSDC
+pnpm orderbook BTCUSDC
 
 # With options
-npm run orderbook ETHUSDC --depth 20 --window 30 --min-signal 70
-```
-
-### TUI Version (flicker-free, recommended)
-```bash
-# Basic usage
-npm run orderbook-tui BTCUSDC
-
-# With options
-npm run orderbook-tui ETHUSDC --depth 20 --window 30 --min-signal 70
+pnpm orderbook ETHUSDC --depth 20 --window 30 --min-signal 70
 
 # Or directly with npx
-npx tsx src/bin/orderbook-tui.ts BCHUSDC
+npx tsx src/bin/orderbook.ts BCHUSDC
 ```
 
 ## Options
@@ -48,7 +38,7 @@ npx tsx src/bin/orderbook-tui.ts BCHUSDC
 
 ## TUI Layout
 
-The TUI version provides a fixed layout with 6 panels:
+The TUI provides a fixed layout with 6 panels:
 
 ```
 ┌─ Orderbook ─────────────┬─ Velocity Metrics ──────┐
@@ -104,7 +94,7 @@ When conditions are met, generates signals with:
 
 ## Architecture
 
-1. **WebSocket Client** (`BinanceOrderbookWS`):
+1. **WebSocket Client** (`BinanceOrderbookWSSimple`):
    - Maintains orderbook state
    - Handles reconnection
    - Processes incremental updates

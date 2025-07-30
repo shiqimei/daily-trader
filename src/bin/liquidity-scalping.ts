@@ -237,17 +237,17 @@ class LiquidityScalpingStrategy {
     this.startPeriodicCleanup()
   }
   
-  private handleUserDataUpdate(data: AccountUpdate | OrderUpdate) {
+  private async handleUserDataUpdate(data: AccountUpdate | OrderUpdate) {
     if (data.eventType === 'ACCOUNT_UPDATE') {
       // Handle account updates (positions, balances)
-      this.handleAccountUpdate(data)
+      await this.handleAccountUpdate(data)
     } else if (data.eventType === 'ORDER_TRADE_UPDATE') {
       // Handle order updates
       this.handleOrderUpdate(data)
     }
   }
   
-  private handleAccountUpdate(update: AccountUpdate) {
+  private async handleAccountUpdate(update: AccountUpdate) {
     // Update account balance
     const usdcBalance = update.balances.find(b => b.asset === 'USDC')
     if (usdcBalance) {
@@ -266,19 +266,21 @@ class LiquidityScalpingStrategy {
         const posAmt = parseFloat(positionUpdate.positionAmt)
         
         // Position closed
-        if (posAmt === 0 && this.position) {
+        if (posAmt === 0) {
           const pnl = this.calculatePnlBps()
           const unRealizedProfit = parseFloat(positionUpdate.unRealizedProfit)
           
-          console.log(chalk.green(`\n✓ Position closed (PnL: ${pnl.toFixed(1)}bps, $${unRealizedProfit.toFixed(2)})`))
+          console.log(chalk.green(`\n✓ Position closed via WebSocket (PnL: ${pnl.toFixed(1)}bps, $${unRealizedProfit.toFixed(2)})`))
           console.log(chalk.gray(`  Entry: ${this.position.entryPrice.toFixed(4)}`))
           console.log(chalk.gray(`  Mark Price: ${positionUpdate.markPrice}`))
           
-          // Clear position
+          // Clear position and cancel all pending orders
+          await this.cancelPendingOrders()
           this.position = null
           this.clearExitTimers()
           this.state = 'ENTRY_HUNTING'
           this.lastPatternCheckTime = Date.now() + 5000 // 5 second cooldown
+          console.log(chalk.cyan('🎯 Switching to ENTRY HUNTING mode'))
         }
         // Position size changed (partial exit)
         else if (Math.abs(posAmt) !== this.position.size && posAmt !== 0) {
@@ -286,6 +288,17 @@ class LiquidityScalpingStrategy {
           this.position.size = Math.abs(posAmt)
           console.log(chalk.yellow(`  📊 Position size changed: ${oldSize} → ${this.position.size}`))
         }
+      } else {
+        // No position update for our symbol means position is closed
+        console.log(chalk.yellow(`\n⚠️  Position not found in WebSocket update - assuming closed`))
+        
+        // Clear position and cancel all pending orders
+        await this.cancelPendingOrders()
+        this.position = null
+        this.clearExitTimers()
+        this.state = 'ENTRY_HUNTING'
+        this.lastPatternCheckTime = Date.now() + 5000 // 5 second cooldown
+        console.log(chalk.cyan('🎯 Switching to ENTRY HUNTING mode'))
       }
     }
   }
@@ -353,6 +366,63 @@ class LiquidityScalpingStrategy {
         // Calculate ATR-based TP/SL
         const atrValue = this.currentMarket!.atrValue
         
+        // Initialize orderbook first to get current spread for TP calculation
+        await this.initializeOrderbook()
+        
+        // Get current orderbook for TP calculation
+        const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+        let tpPrice: number
+        
+        if (orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0) {
+          const bestBid = orderbook.bids[0].price
+          const bestAsk = orderbook.asks[0].price
+          const tickSize = this.currentMarket!.tickSize
+          
+          if (side === 'LONG') {
+            // For LONG: We want to sell at the highest price that won't cross the spread
+            // Start with ATR-based target
+            const atrBasedTP = entryPrice + (atrValue * 0.5)
+            
+            // Ensure we're not crossing the spread - must be >= best_ask to be a maker order
+            if (atrBasedTP < bestAsk) {
+              // If ATR target is below best ask, place at best ask (join the queue)
+              tpPrice = this.roundToTickSize(bestAsk)
+            } else {
+              // If ATR target is above best ask, use it (will be in the book as maker)
+              tpPrice = this.roundToTickSize(atrBasedTP)
+            }
+            
+            // Also ensure minimum profit of at least 2 ticks
+            const minTP = entryPrice + (tickSize * 2)
+            tpPrice = Math.max(tpPrice, minTP)
+            
+          } else {
+            // For SHORT: We want to buy at the lowest price that won't cross the spread
+            // Start with ATR-based target
+            const atrBasedTP = entryPrice - (atrValue * 0.5)
+            
+            // Ensure we're not crossing the spread - must be <= best_bid to be a maker order
+            if (atrBasedTP > bestBid) {
+              // If ATR target is above best bid, place at best bid (join the queue)
+              tpPrice = this.roundToTickSize(bestBid)
+            } else {
+              // If ATR target is below best bid, use it (will be in the book as maker)
+              tpPrice = this.roundToTickSize(atrBasedTP)
+            }
+            
+            // Also ensure minimum profit of at least 2 ticks
+            const minTP = entryPrice - (tickSize * 2)
+            tpPrice = Math.min(tpPrice, minTP)
+          }
+        } else {
+          // Fallback to ATR-based TP if no orderbook data
+          tpPrice = this.roundToTickSize(
+            side === 'LONG' 
+              ? entryPrice + (atrValue * 0.5)
+              : entryPrice - (atrValue * 0.5)
+          )
+        }
+        
         this.position = {
           symbol: openPosition.symbol,
           side,
@@ -360,11 +430,7 @@ class LiquidityScalpingStrategy {
           size: Math.abs(positionAmt),
           originalSize: Math.abs(positionAmt), // Assume current size is original
           entryTime: Date.now() - 60000, // Assume 1 minute old if unknown
-          tpPrice: this.roundToTickSize(
-            side === 'LONG' 
-              ? entryPrice + (atrValue * 0.5)  // TP at 0.5 ATR
-              : entryPrice - (atrValue * 0.5)
-          ),
+          tpPrice,
           slPrice: this.roundToTickSize(
             side === 'LONG'
               ? entryPrice - atrValue  // SL at 1 ATR
@@ -372,9 +438,6 @@ class LiquidityScalpingStrategy {
           ),
           unrealizedPnl: parseFloat(openPosition.unRealizedProfit)
         }
-        
-        // Initialize orderbook for this symbol
-        await this.initializeOrderbook()
         
         // Check for existing TP/SL orders
         await this.checkExistingTPSLOrders()
@@ -900,6 +963,60 @@ class LiquidityScalpingStrategy {
     const side = this.markerOrder.side === 'BUY' ? 'LONG' : 'SHORT'
     const atrValue = this.currentMarket!.atrValue
     
+    // Get current orderbook for TP calculation
+    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    let tpPrice: number
+    
+    if (orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0) {
+      const bestBid = orderbook.bids[0].price
+      const bestAsk = orderbook.asks[0].price
+      const tickSize = this.currentMarket!.tickSize
+      
+      if (side === 'LONG') {
+        // For LONG: We want to sell at the highest price that won't cross the spread
+        // Start with ATR-based target
+        const atrBasedTP = this.markerOrder.price + (atrValue * 0.5)
+        
+        // Ensure we're not crossing the spread - must be >= best_ask to be a maker order
+        if (atrBasedTP < bestAsk) {
+          // If ATR target is below best ask, place at best ask (join the queue)
+          tpPrice = this.roundToTickSize(bestAsk)
+        } else {
+          // If ATR target is above best ask, use it (will be in the book as maker)
+          tpPrice = this.roundToTickSize(atrBasedTP)
+        }
+        
+        // Also ensure minimum profit of at least 2 ticks
+        const minTP = this.markerOrder.price + (tickSize * 2)
+        tpPrice = Math.max(tpPrice, minTP)
+        
+      } else {
+        // For SHORT: We want to buy at the lowest price that won't cross the spread
+        // Start with ATR-based target
+        const atrBasedTP = this.markerOrder.price - (atrValue * 0.5)
+        
+        // Ensure we're not crossing the spread - must be <= best_bid to be a maker order
+        if (atrBasedTP > bestBid) {
+          // If ATR target is above best bid, place at best bid (join the queue)
+          tpPrice = this.roundToTickSize(bestBid)
+        } else {
+          // If ATR target is below best bid, use it (will be in the book as maker)
+          tpPrice = this.roundToTickSize(atrBasedTP)
+        }
+        
+        // Also ensure minimum profit of at least 2 ticks
+        const minTP = this.markerOrder.price - (tickSize * 2)
+        tpPrice = Math.min(tpPrice, minTP)
+      }
+    } else {
+      // Fallback to ATR-based TP if no orderbook data
+      tpPrice = this.roundToTickSize(
+        side === 'LONG' 
+          ? this.markerOrder.price + (atrValue * 0.5)
+          : this.markerOrder.price - (atrValue * 0.5)
+      )
+    }
+    
     this.position = {
       symbol: this.markerOrder.symbol,
       side,
@@ -907,11 +1024,7 @@ class LiquidityScalpingStrategy {
       size: this.markerOrder.size,
       originalSize: this.markerOrder.size,
       entryTime: Date.now(),
-      tpPrice: this.roundToTickSize(
-        side === 'LONG' 
-          ? this.markerOrder.price + (atrValue * 0.5)  // TP at 0.5 ATR
-          : this.markerOrder.price - (atrValue * 0.5)
-      ),
+      tpPrice,
       slPrice: this.roundToTickSize(
         side === 'LONG'
           ? this.markerOrder.price - atrValue  // SL at 1 ATR
@@ -923,7 +1036,13 @@ class LiquidityScalpingStrategy {
     this.positionStartTime = Date.now()
     
     console.log(chalk.green(`\n✓ Position opened: ${side} at ${this.position.entryPrice}`))
-    console.log(chalk.gray(`  TP: ${this.position.tpPrice.toFixed(4)} (+${(this.currentMarket!.atrBps * 0.5).toFixed(0)}bps)`))
+    
+    // Calculate actual TP distance for logging
+    const tpDistance = side === 'LONG' 
+      ? (this.position.tpPrice - this.position.entryPrice) / this.position.entryPrice * 10000
+      : (this.position.entryPrice - this.position.tpPrice) / this.position.entryPrice * 10000
+    
+    console.log(chalk.gray(`  TP: ${this.position.tpPrice.toFixed(4)} (+${tpDistance.toFixed(0)}bps)`))
     console.log(chalk.gray(`  SL: ${this.position.slPrice.toFixed(4)} (-${this.currentMarket!.atrBps.toFixed(0)}bps)`))
     
     await this.placeTPSLOrders()
@@ -962,7 +1081,7 @@ class LiquidityScalpingStrategy {
             side: this.position.side === 'LONG' ? 'SELL' : 'BUY',
             type: 'LIMIT',
             quantity: this.position.size,
-            price: this.position.tpPrice,
+            price: this.position.tpPrice,  // Use original TP price in initial placement
             timeInForce: 'GTC',
             reduceOnly: true
           }
@@ -1023,6 +1142,38 @@ class LiquidityScalpingStrategy {
       return
     }
     
+    // Periodically verify position still exists (every 10 seconds)
+    const now = Date.now()
+    if (now - this.lastPositionCheck > 10000) {
+      this.lastPositionCheck = now
+      
+      try {
+        const posResult = await this.mcpClient!.callTool({
+          name: 'get_positions',
+          arguments: {}
+        })
+        
+        const posResponse = JSON.parse((posResult.content as any)[0].text)
+        const positions = posResponse.positions || []
+        
+        const activePosition = positions.find((p: any) => 
+          p.symbol === this.position!.symbol && 
+          parseFloat(p.positionAmt) !== 0
+        )
+        
+        if (!activePosition) {
+          console.log(chalk.yellow('\n⚠️  Position no longer exists - switching to entry hunting'))
+          await this.cancelPendingOrders()
+          this.position = null
+          this.clearExitTimers()
+          this.state = 'ENTRY_HUNTING'
+          return
+        }
+      } catch (error) {
+        console.error(chalk.red('Failed to verify position:'), error)
+      }
+    }
+    
     // Get current price from orderbook
     const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
     if (!orderbook || orderbook.bids.length === 0 || orderbook.asks.length === 0) {
@@ -1080,7 +1231,6 @@ class LiquidityScalpingStrategy {
     // Now only TP/SL will close positions
     
     // Check position status periodically (not too frequently)
-    const now = Date.now()
     if (now - this.lastPositionCheck >= this.positionCheckInterval) {
       this.lastPositionCheck = now
       await this.checkPositionStatus()
@@ -1217,6 +1367,57 @@ class LiquidityScalpingStrategy {
     
     console.log(chalk.yellow('TP order missing, placing now...'))
     
+    // Recalculate TP price based on current orderbook to avoid crossing spread
+    const orderbook = this.orderbookDynamics?.getCurrentOrderbook()
+    let currentTPPrice = this.position.tpPrice
+    
+    if (orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0) {
+      const bestBid = orderbook.bids[0].price
+      const bestAsk = orderbook.asks[0].price
+      const tickSize = this.currentMarket!.tickSize
+      const atrValue = this.currentMarket!.atrValue
+      
+      console.log(chalk.gray(`  Current orderbook: Bid: ${bestBid} | Ask: ${bestAsk}`))
+      console.log(chalk.gray(`  Original TP price: ${this.position.tpPrice} | Side: ${this.position.side}`))
+      
+      // Recalculate TP to ensure it won't cross spread
+      if (this.position.side === 'LONG') {
+        // For LONG: We want to sell, so TP must be >= best_ask to be a maker order
+        const atrBasedTP = this.position.entryPrice + (atrValue * 0.5)
+        
+        if (atrBasedTP < bestAsk) {
+          // If ATR target is below best ask, place at best ask
+          currentTPPrice = this.roundToTickSize(bestAsk)
+        } else {
+          // Use ATR target
+          currentTPPrice = this.roundToTickSize(atrBasedTP)
+        }
+        
+        // Ensure minimum profit of 2 ticks
+        const minTP = this.position.entryPrice + (tickSize * 2)
+        currentTPPrice = Math.max(currentTPPrice, minTP)
+        
+        console.log(chalk.gray(`  LONG TP recalculated: ${currentTPPrice} (must be >= ${bestAsk} to avoid crossing)`))
+      } else {
+        // For SHORT: We want to buy, so TP must be <= best_bid to be a maker order
+        const atrBasedTP = this.position.entryPrice - (atrValue * 0.5)
+        
+        if (atrBasedTP > bestBid) {
+          // If ATR target is above best bid, place at best bid
+          currentTPPrice = this.roundToTickSize(bestBid)
+        } else {
+          // Use ATR target
+          currentTPPrice = this.roundToTickSize(atrBasedTP)
+        }
+        
+        // Ensure minimum profit of 2 ticks
+        const minTP = this.position.entryPrice - (tickSize * 2)
+        currentTPPrice = Math.min(currentTPPrice, minTP)
+        
+        console.log(chalk.gray(`  SHORT TP recalculated: ${currentTPPrice} (must be <= ${bestBid} to avoid crossing)`))
+      }
+    }
+    
     try {
       // Place TP order (maker limit order with GTX)
       const tpResult = await this.mcpClient!.callTool({
@@ -1226,7 +1427,7 @@ class LiquidityScalpingStrategy {
           side: this.position.side === 'LONG' ? 'SELL' : 'BUY',
           type: 'LIMIT',
           quantity: this.position.size,
-          price: this.position.tpPrice,
+          price: currentTPPrice,  // Use recalculated price
           timeInForce: 'GTX', // Post-only for maker fees
           reduceOnly: true
         }
@@ -1241,6 +1442,7 @@ class LiquidityScalpingStrategy {
         // Special handling for ReduceOnly rejection - might mean position closed
         if (errorData.error && errorData.error.includes('ReduceOnly Order is rejected')) {
           console.log(chalk.yellow('⚠️  ReduceOnly order rejected - checking if position closed...'))
+          console.log(chalk.gray(`  Raw error: ${JSON.stringify(errorData)}`))  // Log raw error for debugging
           
           // Check current positions
           try {
@@ -1287,7 +1489,7 @@ class LiquidityScalpingStrategy {
             side: this.position.side === 'LONG' ? 'SELL' : 'BUY',
             type: 'LIMIT',
             quantity: this.position.size,
-            price: this.position.tpPrice,
+            price: currentTPPrice,  // Use recalculated price
             timeInForce: 'GTC',
             reduceOnly: true
           }
@@ -1308,7 +1510,8 @@ class LiquidityScalpingStrategy {
           return
         }
         this.position.tpOrderId = tpOrder.orderId.toString()
-        console.log(chalk.green(`✓ TP order placed #${tpOrder.orderId} at ${this.position.tpPrice.toFixed(4)} (GTC)`))
+        this.position.tpPrice = currentTPPrice  // Update stored TP price
+        console.log(chalk.green(`✓ TP order placed #${tpOrder.orderId} at ${currentTPPrice.toFixed(4)} (GTC)`))
         this.backoff.recordSuccess(operationKey) // Reset on success
         this.lastOrderPlacement = Date.now() // Record order placement time
       } else {
@@ -1320,7 +1523,8 @@ class LiquidityScalpingStrategy {
           return
         }
         this.position.tpOrderId = tpOrder.orderId.toString()
-        console.log(chalk.green(`✓ TP order placed #${tpOrder.orderId} at ${this.position.tpPrice.toFixed(4)} (GTX)`))
+        this.position.tpPrice = currentTPPrice  // Update stored TP price
+        console.log(chalk.green(`✓ TP order placed #${tpOrder.orderId} at ${currentTPPrice.toFixed(4)} (GTX)`))
         this.backoff.recordSuccess(operationKey) // Reset on success
         this.lastOrderPlacement = Date.now() // Record order placement time
       }
@@ -2019,6 +2223,8 @@ class LiquidityScalpingStrategy {
       
       if (openOrders.length === 0) return
       
+      console.log(chalk.gray(`\n🧹 Found ${openOrders.length} open orders while in ENTRY_HUNTING mode`))
+      
       // Group orders by symbol
       const ordersBySymbol: Record<string, any[]> = {}
       for (const order of openOrders) {
@@ -2037,7 +2243,7 @@ class LiquidityScalpingStrategy {
           // Cancel any orders that aren't our current marker order
           for (const order of orders) {
             if (order.orderId.toString() !== this.markerOrder.orderId) {
-              console.log(chalk.yellow(`  ⚠️  Cancelling dangling ${order.side} order #${order.orderId} at ${order.price}`))
+              console.log(chalk.yellow(`  ⚠️  Cancelling non-marker order: ${order.side} ${order.type} #${order.orderId}`))
               await this.mcpClient!.callTool({
                 name: 'cancel_order',
                 arguments: {
@@ -2049,10 +2255,11 @@ class LiquidityScalpingStrategy {
             }
           }
         } else {
-          // Cancel all orders for symbols we're not actively trading
-          console.log(chalk.yellow(`  ⚠️  Found ${orders.length} dangling orders for ${symbol}, cancelling all...`))
+          // Cancel ALL orders for symbols we're not actively trading
+          console.log(chalk.yellow(`  ⚠️  Cancelling ALL ${orders.length} orders for ${symbol} (not active market)`))
           
           for (const order of orders) {
+            console.log(chalk.gray(`    - ${order.side} ${order.type} #${order.orderId}`))
             await this.mcpClient!.callTool({
               name: 'cancel_order',
               arguments: {

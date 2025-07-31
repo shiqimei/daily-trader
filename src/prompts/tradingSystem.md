@@ -84,6 +84,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 - NEVER enter without defined risk/reward
 - NEVER risk more than 30% per trade
 - NEVER ignore ATR in position sizing
+- NEVER use IOC, FOK or GTC orders for entries and TPS
 2. MANDATORY ACTIONS ✓
 - ALWAYS document entry reasoning and ATR values in Decisions
 - ALWAYS calculate and state expected R:R ratio

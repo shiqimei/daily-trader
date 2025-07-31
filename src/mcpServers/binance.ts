@@ -549,6 +549,11 @@ const binanceTools: Tool[] = [
           type: 'number',
           description: 'Percentage to close (1-100)',
           default: 100
+        },
+        timeInForce: {
+          type: 'string',
+          description: 'Time in force (GTC, IOC, FOK, GTX/Post-Only)',
+          enum: ['GTC', 'IOC', 'FOK', 'GTX']
         }
       },
       required: ['symbol', 'triggerPrice']
@@ -624,7 +629,7 @@ const binanceTools: Tool[] = [
         symbols: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Trading pair symbols (default: ["ETHUSDC"])'
+          description: 'Trading pair symbols (default: ["TRUMPUSDC"])'
         },
         last_days: { type: 'number', description: 'Number of days to look back', default: 7 },
         limit: { type: 'number', description: 'Number of positions to return (max: 5)', default: 5 }
@@ -2020,8 +2025,14 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         const {
           symbol,
           triggerPrice,
-          closePercentage = 100
-        } = args as { symbol: string; triggerPrice: number; closePercentage?: number }
+          closePercentage = 100,
+          timeInForce
+        } = args as {
+          symbol: string
+          triggerPrice: number
+          closePercentage?: number
+          timeInForce?: string
+        }
         if (closePercentage < 1 || closePercentage > 100) {
           throw new Error('Close percentage must be between 1 and 100')
         }
@@ -2046,20 +2057,26 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         const tpQty = roundToStepSize(Math.abs(positionAmt * (closePercentage / 100)), stepSize)
         const side = positionAmt > 0 ? 'SELL' : 'BUY'
 
-        const order = await makeRequest(
-          config,
-          '/fapi/v1/order',
-          {
-            symbol,
-            side,
-            quantity: tpQty,
-            type: 'TAKE_PROFIT_MARKET',
-            stopPrice: triggerPrice,
-            reduceOnly: true
-          },
-          'POST',
-          true
-        )
+        // If timeInForce is specified (especially GTX), create a limit order instead
+        const orderParams: any = {
+          symbol,
+          side,
+          quantity: tpQty,
+          reduceOnly: true
+        }
+
+        if (timeInForce === 'GTX') {
+          // For GTX (Post-Only) orders, use LIMIT order type
+          orderParams.type = 'LIMIT'
+          orderParams.price = triggerPrice
+          orderParams.timeInForce = 'GTX'
+        } else {
+          // Default behavior: TAKE_PROFIT_MARKET order
+          orderParams.type = 'TAKE_PROFIT_MARKET'
+          orderParams.stopPrice = triggerPrice
+        }
+
+        const order = await makeRequest(config, '/fapi/v1/order', orderParams, 'POST', true)
 
         return {
           content: [
@@ -2073,9 +2090,12 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                   closePercentage,
                   tpQty,
                   side,
+                  orderType: order.type,
+                  timeInForce: order.timeInForce,
                   order: {
                     orderId: order.orderId,
                     status: order.status,
+                    price: order.price,
                     stopPrice: order.stopPrice,
                     time: new Date(order.updateTime).toISOString()
                   }
@@ -2271,7 +2291,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
 
         // Use default symbols if not provided or empty
-        const symbolsToUse = !symbols || symbols.length === 0 ? ['ETHUSDC'] : symbols
+        const symbolsToUse = !symbols || symbols.length === 0 ? ['TRUMPUSDC'] : symbols
 
         // Calculate time range based on last_days
         const now = Date.now()

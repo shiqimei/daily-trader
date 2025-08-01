@@ -127,6 +127,9 @@ async function captureScreenshotOnPage(
       timeout: 20000
     })
 
+    // Wait for 10 seconds to ensure the chart is loaded
+    await new Promise(resolve => setTimeout(resolve, 1000 * 10))
+
     // Additional wait for chart to render completely
     await page.evaluate(() => {
       return new Promise<void>(resolve => {
@@ -223,6 +226,12 @@ async function captureScreenshotsAcrossTimeframes(symbol: string): Promise<{
   const [screenshot5m, screenshot30m] = await Promise.all([
     captureScreenshotOnPage(page1, symbol, '5m'),
     captureScreenshotOnPage(page2, symbol, '30m')
+  ])
+
+  // Navigate to about:blank to release render process resources
+  await Promise.all([
+    page1.goto('about:blank', { waitUntil: 'domcontentloaded' }),
+    page2.goto('about:blank', { waitUntil: 'domcontentloaded' })
   ])
 
   return {

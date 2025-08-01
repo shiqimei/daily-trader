@@ -70,7 +70,9 @@ async function runClaude() {
         'mcp__binance__get_position_history',
         'mcp__memo__add_memo',
         'mcp__memo__list_memos',
-        'mcp__wechat__push_notification'
+        'mcp__wechat__push_notification',
+        'mcp__chrome__get_screen_by_symbol',
+        'mcp__chrome__get_symbol_screenshot_across_timeframes'
       ],
       disallowedTools: [
         'Task',
@@ -104,6 +106,11 @@ async function runClaude() {
           type: 'stdio',
           command: 'npx',
           args: ['-y', 'tsx', './src/mcpServers/wechat.ts']
+        },
+        chrome: {
+          type: 'stdio',
+          command: 'npx',
+          args: ['-y', 'tsx', './src/mcpServers/chrome.ts']
         }
       },
       executable: 'node',

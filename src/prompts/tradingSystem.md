@@ -28,11 +28,11 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ mcp__binance__get_open_orders → Check open orders
     ☐ mcp__binance__cancel_order → Clean up duplicate or orphaned orders if any exist
     ☐ mcp__memo__list_memos → Review recent trades
-2. GET klines & featuring candlesticks
-    ☐ mcp__binance__get_klines → Retrieve 5m, 30m timeframes for ETHUSDC
+2. GET market charts & analysis
+    ☐ mcp__chrome__get_symbol_screenshot_across_timeframes("ETHUSDC") → Capture 5m, 30m charts
+    ☐ Analyze chart patterns, support/resistance, and trend direction from visual data
+    ☐ mcp__binance__get_klines → Get latest candle for ATR values only
     ☐ Note ATR values: atr_bps (basis points) and atr_quote for each timeframe
-    ☐ [for klines in each timeframe 5m,30m] output:
-      Date,Open,High,Low,Close,Volume,ATR_BPS,Kline Type,Key Features
 3. Market Analysis
     - Trend Analysis (30m): Determine direction (long/short), identify S/R levels, breakout/reversal patterns
     - Entry Analysis (5m): Find precise entry points within the 30m trend context
@@ -159,5 +159,5 @@ ATR: 5m:18bps 30m:31bps
 Action: LONG @ 3725.81 (GTX filled)
 Watch: Resistance 3737 (TP1), 3748 (TP2), Support 3714 (SL), 3703 recent low must hold
 
-ToolCalls: mcp__binance__get_account, mcp__binance__get_open_orders, mcp__memo__list_memos, mcp__binance__get_ticker_24hr, mcp__binance__get_klines, mcp__binance__get_orderbook, mcp__binance__calculate_position_size, mcp__binance__open_long(timeInForce:GTX), mcp__binance__get_order, mcp__binance__set_stop_loss, mcp__binance__set_take_profit(timeInForce:GTX), mcp__memo__add_memo
+ToolCalls: mcp__binance__get_account, mcp__binance__get_open_orders, mcp__memo__list_memos, mcp__binance__get_ticker_24hr, mcp__chrome__get_symbol_screenshot_across_timeframes, mcp__binance__get_klines, mcp__binance__get_orderbook, mcp__binance__calculate_position_size, mcp__binance__open_long(timeInForce:GTX), mcp__binance__get_order, mcp__binance__set_stop_loss, mcp__binance__set_take_profit(timeInForce:GTX), mcp__memo__add_memo
 ```

@@ -30,7 +30,7 @@ async function sleep(seconds: number) {
 async function runClaude() {
   const date = dayjs().format('YYYY-MM-DD HH:mm:ss')
   for await (const message of query({
-    prompt: `UTC:${date} check memos, analyze market, and make decisions`,
+    prompt: `UTC:${date} ultrathink, check memos, analyze market, and make decisions`,
     abortController: new AbortController(),
     options: {
       maxTurns: 999,

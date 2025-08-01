@@ -28,23 +28,24 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ mcp__binance__cancel_order → Clean up duplicate or orphaned orders if any exist
     ☐ mcp__memo__list_memos → Review recent trades
 2. GET klines & featuring candlesticks
-    ☐ mcp__binance__get_klines → Retrieve 5m, 15m, 4h, 1d timeframes for TRUMPUSDC
+    ☐ mcp__binance__get_klines → Retrieve 5m, 30m timeframes for TRUMPUSDC
     ☐ Note ATR values: atr_bps (basis points) and atr_quote for each timeframe
-    ☐ [for klines in each timeframe 5m,15m,4h,1d] output:
+    ☐ [for klines in each timeframe 5m,30m] output:
       Date,Open,High,Low,Close,Volume,ATR_BPS,Kline Type,Key Features
 3. Market Analysis
-    - Price Action: Analyze kline patterns, momentum, volume
-    - Support/Resistance: Identify key levels from price history
-    - ATR Analysis: Use 15m ATR as primary reference for volatility
-    - Market Context: Overall trend, volatility, market sentiment
-    - Trading Opportunity: Based on experience and current market conditions
+    - Trend Analysis (30m): Determine direction (long/short), identify S/R levels, breakout/reversal patterns
+    - Entry Analysis (5m): Find precise entry points within the 30m trend context
+    - ATR Analysis: Use 30m ATR as primary reference for volatility and position sizing
+    - Market Context: Overall trend direction, key levels, momentum alignment
+    - Trading Opportunity: Only trade when 5m aligns with 30m trend
 4. Trading Decision & Entry Management
     ☐ Use your experience to identify high-probability setups
-    ☐ Consider multiple timeframe alignment
-    ☐ Calculate SL/TP using ATR:
-      • Stop Loss: 1.0-1.5x ATR from entry (based on structure)
-      • Take Profit 1: 1.0x ATR (1R target)
-      • Take Profit 2: 2.0x ATR (2R target)
+    ☐ Ensure 30m trend direction is clear (UP/DOWN) before any entry
+    ☐ Use 5m timeframe for precise entry timing
+    ☐ Calculate SL/TP using 30m ATR:
+      • Stop Loss: 1.0-1.5x 30m ATR from entry (based on structure)
+      • Take Profit 1: 1.0x 30m ATR (1R target)
+      • Take Profit 2: 2.0x 30m ATR (2R target)
     ☐ Evaluate risk/reward potential (minimum 2:1)
     ☐ Entry Order Execution:
       • Get orderbook: mcp__binance__get_orderbook
@@ -83,13 +84,15 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 - NEVER trade without clear entry logic
 - NEVER enter without defined risk/reward
 - NEVER risk more than 30% per trade
-- NEVER ignore ATR in position sizing
+- NEVER ignore 30m ATR in position sizing
 - NEVER use IOC, FOK or GTC orders for entries and TPS
+- NEVER trade against 30m trend direction
+- NEVER enter without 5m confirmation signal
 2. MANDATORY ACTIONS ✓
 - ALWAYS document entry reasoning and ATR values in Decisions
 - ALWAYS calculate and state expected R:R ratio
-- ALWAYS use price action and klines as primary guide
-- ALWAYS set stops based on ATR + market structure
+- ALWAYS use 30m for trend direction, 5m for entry timing
+- ALWAYS set stops based on 30m ATR + market structure
 - ALWAYS use GTX orders for entries and TPs
 - ALWAYS verify order creation and recreate if failed
 ```
@@ -98,13 +101,13 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 
 ```yml
 BAL: [total] [available]
-Decisions: [Key market observation + entry logic explanation + ATR analysis (15m ATR: X bps) + expected R:R ratio + action taken]
+Decisions: [30m trend direction + 5m entry setup + ATR analysis (30m ATR: X bps) + expected R:R ratio + action taken]
 POS:
 [For each active position]
 - [SYMBOL] [LONG/SHORT] [size] @ entry_price last_price
   • PNL: net_realized_pnl [net_realized_pnl] | realized_pnl [realized_pnl] | unrealized_pnl [unrealized_pnl]
   • P/L: [amount] ([R-multiple])
-  • ATR: 15m: [atr_bps]bps ([atr_quote] USDC)
+  • ATR: 30m: [atr_bps]bps ([atr_quote] USDC)
   • Stop: @ [stop_price] ([X]x ATR + [structure reason])
   • Target: TP1 @ [tp1_price] (1R), TP2 @ [tp2_price] (2R)
   • Orders: Entry:[orderId/status] SL:[orderId] TP1:[orderId/status] TP2:[orderId/status]
@@ -118,7 +121,8 @@ POS:
 === [SYMBOL] ===
 Price: [current_price] ([24hr_change_%])
 24hr Range: [low] - [high] | Volume: [volume]
-ATR: 5m:[X]bps 15m:[X]bps 1h:[X]bps 4h:[X]bps
+ATR: 5m:[X]bps 30m:[X]bps
+30m Trend: [UP/DOWN/SIDEWAYS]
 Action: [LONG/SHORT @ price / HOLDING / WAIT]
 Watch: [key price levels to monitor]
 
@@ -132,13 +136,13 @@ ToolCalls: [Comma-separated list of all MCP tools utilized with args]
 ```yml
 BAL: 291.38 USDC available
 
-Decisions: Both BTC and ETH showing synchronized recovery bounce after testing lower supports. BTC bounced from 116842 (just above critical 116572 weekend low) and ETH bounced from 3703.47. Current recovery showing bullish momentum on 5m/15m with increasing volume. ETH 15m ATR: 31 bps (11.55 USDC) providing clear risk parameters. BTC reclaimed 117200 and targeting 117500 resistance. ETH reclaimed 3720 and targeting 3756 resistance. This appears to be a potential reversal setup after weekend selloff found support. Long opportunities emerging with clear risk levels. ETH long entry using GTX order at 3725.81 (best_bid + tick), stop at 3714 (1.0x ATR below entry respecting 3703 low), TP1 at 3737 (1R), TP2 at 3748 (2R). Risk: 11.81 USDC, Reward: 22.19 USDC for 1.88:1 R:R. Executing trade based on synchronized bounce pattern, volume confirmation, and favorable ATR setup.
+Decisions: 30m trend shows clear uptrend after bounce from support at 3703. 30m candles forming higher lows and breaking above 3720 resistance. 5m showing bullish momentum entry with volume surge and breakout above 3725. ETH 30m ATR: 31 bps (11.55 USDC) providing clear risk parameters. 30m trend direction: UP with target at 3756 resistance. 5m entry pattern confirmed with volume. ETH long entry using GTX order at 3725.81 (best_bid + tick), stop at 3714 (1.0x 30m ATR below entry respecting 3703 low), TP1 at 3737 (1R), TP2 at 3748 (2R). Risk: 11.81 USDC, Reward: 22.19 USDC for 1.88:1 R:R. Executing trade based on 30m uptrend and 5m entry confirmation.
 
 POS:
 - TRUMPUSDC LONG 8.019 @ 3725.81
   • PNL: net_realized_pnl [0] | realized_pnl [0] | unrealized_pnl [0]
   • P/L: 0 (0R)
-  • ATR: 15m: 31bps (11.55 USDC)
+  • ATR: 30m: 31bps (11.55 USDC)
   • Stop: @ 3714 (1.0x ATR + below 3703 low)
   • Target: TP1 @ 3737 (1R), TP2 @ 3748 (2R)
   • Orders: Entry:123456/FILLED SL:123457 TP1:123458/NEW TP2:123459/NEW
@@ -149,7 +153,8 @@ POS:
 === TRUMPUSDC ===
 Price: 3725.81 (+3.372%)
 24hr Range: 3596.62 - 3826.39 | Volume: 6.74B USDC
-ATR: 5m:18bps 15m:31bps 1h:45bps 4h:72bps
+ATR: 5m:18bps 30m:31bps
+30m Trend: UP
 Action: LONG @ 3725.81 (GTX filled)
 Watch: Resistance 3737 (TP1), 3748 (TP2), Support 3714 (SL), 3703 recent low must hold
 

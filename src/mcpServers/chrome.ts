@@ -41,7 +41,7 @@ const toolsList: Tool[] = [
   {
     name: 'get_symbol_screenshot_across_timeframes',
     description:
-      'Capture screenshots of Binance futures chart for both 30m and 5m intervals in parallel',
+      'Capture screenshots of Binance futures chart for both 30m and 5m intervals sequentially',
     inputSchema: {
       type: 'object',
       properties: {
@@ -76,34 +76,26 @@ async function getBrowser(): Promise<Browser> {
 async function getTab(): Promise<Page> {
   const browserInstance = await getBrowser()
 
-  // Initialize tabs if needed
+  // Initialize tabs if needed (only need 1 tab now)
   if (tabs.length === 0) {
     const pages = await browserInstance.pages()
 
-    // Use existing pages or create new ones
-    if (pages.length >= 2) {
-      tabs = pages.slice(0, 2)
+    // Use existing page or create new one
+    if (pages.length >= 1) {
+      tabs = pages.slice(0, 1)
     } else {
-      tabs = [...pages]
-      while (tabs.length < 2) {
-        tabs.push(await browserInstance.newPage())
-      }
+      tabs = [await browserInstance.newPage()]
     }
 
-    // Set viewport for all tabs
-    for (const tab of tabs) {
-      await tab.setViewport({
-        width: 1920,
-        height: 1080
-      })
-    }
+    // Set viewport for the tab
+    await tabs[0].setViewport({
+      width: 1920,
+      height: 1080
+    })
   }
 
-  // Get current tab and increment index circularly
-  const tab = tabs[currentTabIndex]
-  currentTabIndex = (currentTabIndex + 1) % 2
-
-  return tab
+  // Always return the first (and only) tab
+  return tabs[0]
 }
 
 async function captureScreenshotOnPage(
@@ -119,43 +111,6 @@ async function captureScreenshotOnPage(
     timeout: 30000
   })
 
-  // Wait for chart canvas to be present and loaded
-  try {
-    // Wait for the chart container to be visible
-    await page.waitForSelector('canvas', {
-      visible: true,
-      timeout: 20000
-    })
-
-    // Wait for 10 seconds to ensure the chart is loaded
-    await new Promise(resolve => setTimeout(resolve, 1000 * 10))
-
-    // Additional wait for chart to render completely
-    await page.evaluate(() => {
-      return new Promise<void>(resolve => {
-        // Check if TradingView chart is loaded
-        const checkChart = () => {
-          const canvas = document.querySelector('canvas')
-          const chartContainer = document.querySelector(
-            '[class*="chart-container"], [class*="chartContainer"]'
-          )
-
-          if (canvas && chartContainer) {
-            // Wait a bit more for chart data to render
-            setTimeout(resolve, 3000)
-          } else {
-            setTimeout(checkChart, 500)
-          }
-        }
-        checkChart()
-      })
-    })
-  } catch (e) {
-    console.error(`Chart wait timeout: ${e}`)
-    // Fallback to fixed wait if chart detection fails
-    await new Promise(resolve => setTimeout(resolve, 15000))
-  }
-
   // Try to click on the interval button
   try {
     await page.evaluate(intervalId => {
@@ -164,18 +119,24 @@ async function captureScreenshotOnPage(
         button.click()
       }
     }, interval)
-
-    // Wait for chart to update after interval change
-    await new Promise(resolve => setTimeout(resolve, 2000))
   } catch (e) {
     // Continue even if interval button not found
     console.error(`Could not click interval button: ${e}`)
   }
 
+  // Wait for chart to update after interval change
+  await new Promise(resolve => setTimeout(resolve, 10 * 1000))
+
   // Take full page screenshot as base64
   const base64 = await page.screenshot({
     encoding: 'base64',
-    fullPage: true
+    fullPage: false,
+    clip: {
+      x: 0,
+      y: 0,
+      width: 1920,
+      height: 1080
+    }
   })
 
   return { base64, symbol, interval }
@@ -193,50 +154,72 @@ async function captureScreenshotsAcrossTimeframes(symbol: string): Promise<{
   '5m': { base64: string; symbol: string; interval: string }
   '30m': { base64: string; symbol: string; interval: string }
 }> {
-  // Get browser and ensure we have 2 tabs
-  const browserInstance = await getBrowser()
+  // Get a single tab
+  const page = await getTab()
 
-  // Initialize tabs if needed
-  if (tabs.length === 0) {
-    const pages = await browserInstance.pages()
+  // Navigate to Binance futures page once
+  const url = `https://www.binance.com/en/futures/${symbol}`
+  await page.goto(url, {
+    waitUntil: 'networkidle2',
+    timeout: 30000
+  })
 
-    // Use existing pages or create new ones
-    if (pages.length >= 2) {
-      tabs = pages.slice(0, 2)
-    } else {
-      tabs = [...pages]
-      while (tabs.length < 2) {
-        tabs.push(await browserInstance.newPage())
+  // Wait for initial page load
+  await new Promise(resolve => setTimeout(resolve, 5000))
+
+  // Capture 30m screenshot first
+  try {
+    await page.evaluate(() => {
+      const button = document.getElementById('30m')
+      if (button) {
+        button.click()
       }
-    }
-
-    // Set viewport for all tabs
-    for (const tab of tabs) {
-      await tab.setViewport({
-        width: 1920,
-        height: 1080
-      })
-    }
+    })
+  } catch (e) {
+    console.error(`Could not click 30m interval button: ${e}`)
   }
 
-  // Use both tabs directly
-  const [page1, page2] = tabs
+  // Wait for chart to update
+  await new Promise(resolve => setTimeout(resolve, 10000))
 
-  // Capture screenshots in parallel
-  const [screenshot5m, screenshot30m] = await Promise.all([
-    captureScreenshotOnPage(page1, symbol, '5m'),
-    captureScreenshotOnPage(page2, symbol, '30m')
-  ])
+  const screenshot30m = await page.screenshot({
+    encoding: 'base64',
+    fullPage: false,
+    clip: {
+      x: 0,
+      y: 0,
+      width: 1920,
+      height: 1080
+    }
+  })
 
-  // Navigate to about:blank to release render process resources
-  await Promise.all([
-    page1.goto('about:blank', { waitUntil: 'domcontentloaded' }),
-    page2.goto('about:blank', { waitUntil: 'domcontentloaded' })
-  ])
+  // Capture 5m screenshot
+  try {
+    await page.evaluate(() => {
+      const button = document.getElementById('5m')
+      if (button) {
+        button.click()
+      }
+    })
+  } catch (e) {
+    console.error(`Could not click 5m interval button: ${e}`)
+  }
+
+  // Wait for chart to update
+  await new Promise(resolve => setTimeout(resolve, 10 * 1000))
+
+  const screenshot5m = await page.screenshot({
+    encoding: 'base64',
+    fullPage: true,
+    captureBeyondViewport: false
+  })
+
+  // Navigate to about:blank to release resources
+  await page.goto('about:blank', { waitUntil: 'domcontentloaded' })
 
   return {
-    '5m': screenshot5m,
-    '30m': screenshot30m
+    '5m': { base64: screenshot5m, symbol, interval: '5m' },
+    '30m': { base64: screenshot30m, symbol, interval: '30m' }
   }
 }
 

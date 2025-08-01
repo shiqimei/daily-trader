@@ -628,7 +628,7 @@ const binanceTools: Tool[] = [
         symbols: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Trading pair symbols (default: ["TRUMPUSDC"])'
+          description: 'Trading pair symbols (default: ["ETHUSDC"])'
         },
         last_days: { type: 'number', description: 'Number of days to look back', default: 7 },
         limit: { type: 'number', description: 'Number of positions to return (max: 5)', default: 5 }
@@ -2290,7 +2290,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         }
 
         // Use default symbols if not provided or empty
-        const symbolsToUse = !symbols || symbols.length === 0 ? ['TRUMPUSDC'] : symbols
+        const symbolsToUse = !symbols || symbols.length === 0 ? ['ETHUSDC'] : symbols
 
         // Calculate time range based on last_days
         const now = Date.now()

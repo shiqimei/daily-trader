@@ -42,6 +42,7 @@ async function runClaude() {
         'mcp__binance__get_klines',
         'mcp__binance__get_klines_all_intervals',
         'mcp__binance__get_orderbook',
+        'mcp__binance__get_order',
         'mcp__binance__get_ticker',
         'mcp__binance__get_ticker_24hr',
         'mcp__binance__get_funding_rate',
@@ -175,7 +176,7 @@ while (true) {
     await runClaude()
     await sleep(60 * 3) // sleep 3 minutes
   } catch (error) {
-    logger.error({ error }, 'Error in runClaude')
+    console.error(error)
     await sleep(10) // sleep 10 seconds
   }
 }

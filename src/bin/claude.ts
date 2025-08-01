@@ -69,6 +69,7 @@ async function runClaude() {
         'mcp__binance__cancel_all_orders',
         'mcp__binance__get_order_history',
         'mcp__binance__get_position_history',
+        'mcp__binance__get_income_history',
         'mcp__memo__add_memo',
         'mcp__memo__list_memos',
         'mcp__wechat__push_notification',

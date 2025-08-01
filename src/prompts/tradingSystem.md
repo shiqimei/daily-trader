@@ -113,7 +113,7 @@ POS:
   • Orders: Entry:[orderId/status] SL:[orderId] TP1:[orderId/status] TP2:[orderId/status]
     [Review and check checklist item below if completed]
     ☐ TP1: 1R → Close 50% position + Move SL to BE
-    ☐ TP2: 2R → Close another 30% (total 80% closed)
+    ☐ TP2: 2R → Close another 50%
     ☐ TP3: Retracement exit or structure-based exit
   • Action: [HOLD/TRAIL/CLOSE]
 

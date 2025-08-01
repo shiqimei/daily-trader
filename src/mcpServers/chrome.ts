@@ -114,8 +114,37 @@ async function captureScreenshotOnPage(page: Page, symbol: string, interval: '5m
     timeout: 30000
   });
   
-  // Wait 10 seconds for page to fully load
-  await new Promise(resolve => setTimeout(resolve, 10000));
+  // Wait for chart canvas to be present and loaded
+  try {
+    // Wait for the chart container to be visible
+    await page.waitForSelector('canvas', {
+      visible: true,
+      timeout: 20000
+    });
+    
+    // Additional wait for chart to render completely
+    await page.evaluate(() => {
+      return new Promise<void>((resolve) => {
+        // Check if TradingView chart is loaded
+        const checkChart = () => {
+          const canvas = document.querySelector('canvas');
+          const chartContainer = document.querySelector('[class*="chart-container"], [class*="chartContainer"]');
+          
+          if (canvas && chartContainer) {
+            // Wait a bit more for chart data to render
+            setTimeout(resolve, 3000);
+          } else {
+            setTimeout(checkChart, 500);
+          }
+        };
+        checkChart();
+      });
+    });
+  } catch (e) {
+    console.error(`Chart wait timeout: ${e}`);
+    // Fallback to fixed wait if chart detection fails
+    await new Promise(resolve => setTimeout(resolve, 15000));
+  }
   
   // Try to click on the interval button
   try {
@@ -126,8 +155,8 @@ async function captureScreenshotOnPage(page: Page, symbol: string, interval: '5m
       }
     }, interval);
     
-    // Wait 1 second for chart to update after click
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Wait for chart to update after interval change
+    await new Promise(resolve => setTimeout(resolve, 2000));
   } catch (e) {
     // Continue even if interval button not found
     console.error(`Could not click interval button: ${e}`);
@@ -234,12 +263,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "image",
-              data: screenshots['5m'].base64,
+              data: screenshots['30m'].base64,
               mimeType: "image/png"
             } as any,
             {
               type: "image",
-              data: screenshots['30m'].base64,
+              data: screenshots['5m'].base64,
               mimeType: "image/png"
             } as any
           ]

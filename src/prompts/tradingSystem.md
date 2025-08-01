@@ -29,7 +29,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ mcp__binance__cancel_order → Clean up duplicate or orphaned orders if any exist
     ☐ mcp__memo__list_memos → Review recent trades
 2. GET market charts & analysis
-    ☐ mcp__chrome__get_symbol_screenshot_across_timeframes("ETHUSDC") → Capture 5m, 30m charts
+    ☐ mcp__chrome__get_symbol_screenshot_across_timeframes("ETHUSDC") → Capture 30m, 5m charts
     ☐ Analyze chart patterns, support/resistance, and trend direction from visual data
     ☐ mcp__binance__get_klines → Get latest candle for ATR values only
     ☐ Note ATR values: atr_bps (basis points) and atr_quote for each timeframe

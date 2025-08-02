@@ -10,5 +10,6 @@
 - Focus on ETHUSDC
 - Focus on 30m timeframe + 5m timeframe
 - TP/SL should be minimum 2:1, and ATR should be used to set TP/SL
+- Use marker order for entry and TP to save commision fee
 - Use Claude Code ultrathink mode
 - Use `get_symbol_screenshot_across_timeframes`

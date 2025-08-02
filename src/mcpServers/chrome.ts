@@ -217,9 +217,6 @@ async function captureScreenshotsAcrossTimeframes(symbol: string): Promise<{
     captureBeyondViewport: false
   })
 
-  // Navigate to about:blank to release resources
-  await page.goto('about:blank', { waitUntil: 'domcontentloaded' })
-
   return {
     '5m': { base64: screenshot5m, symbol, interval: '5m' },
     '30m': { base64: screenshot30m, symbol, interval: '30m' }
@@ -301,7 +298,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
 async function cleanup() {
   console.error('Cleaning up Chrome MCP Server...')
-  
+
   // Close all tabs
   if (tabs.length > 0) {
     for (const tab of tabs) {
@@ -313,7 +310,7 @@ async function cleanup() {
     }
     tabs = []
   }
-  
+
   // Disconnect from browser
   if (browser) {
     try {
@@ -323,31 +320,31 @@ async function cleanup() {
     }
     browser = null
   }
-  
+
   console.error('Chrome MCP Server cleanup complete')
 }
 
 async function runServer() {
   const transport = new StdioServerTransport()
-  
+
   // Set up cleanup handlers
   process.on('SIGINT', async () => {
     await cleanup()
     process.exit(0)
   })
-  
+
   process.on('SIGTERM', async () => {
     await cleanup()
     process.exit(0)
   })
-  
+
   process.on('exit', () => {
     // Synchronous cleanup if needed
     if (browser) {
       browser.disconnect()
     }
   })
-  
+
   await server.connect(transport)
   console.error('Chrome MCP Server running on stdio')
 }

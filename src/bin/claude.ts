@@ -3,8 +3,12 @@ import { logger } from '@/utils/logger'
 import { query } from '@anthropic-ai/claude-code'
 import dayjs from 'dayjs'
 import { config } from 'dotenv'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 
 config()
+
+const execAsync = promisify(exec)
 
 async function sleep(seconds: number) {
   const totalMs = seconds * 1000
@@ -25,6 +29,36 @@ async function sleep(seconds: number) {
       }
     }, 100)
   })
+}
+
+async function cleanupMcpServer() {
+  try {
+    logger.info('Cleaning up MCP server processes...')
+    
+    // Find processes spawned by Claude that contain MCP server paths
+    const { stdout } = await execAsync(`ps aux | grep -E "(binance\.ts|chrome\.ts|memo\.ts|wechat\.ts)" | grep -v grep | awk '{print $2}'`)
+    
+    if (stdout.trim()) {
+      const pids = stdout.trim().split('\n').filter(pid => pid)
+      logger.info(`Found ${pids.length} MCP server processes to cleanup: ${pids.join(', ')}`)
+      
+      // Kill the processes
+      for (const pid of pids) {
+        try {
+          await execAsync(`kill -9 ${pid}`)
+          logger.debug(`Killed process ${pid}`)
+        } catch (error) {
+          logger.debug(`Process ${pid} already terminated`)
+        }
+      }
+      
+      logger.info('MCP server cleanup completed')
+    } else {
+      logger.debug('No MCP server processes found to cleanup')
+    }
+  } catch (error) {
+    logger.error({ error }, 'Failed to cleanup MCP server processes')
+  }
 }
 
 async function runClaude() {
@@ -175,9 +209,11 @@ async function runClaude() {
 while (true) {
   try {
     await runClaude()
+    await cleanupMcpServer() // kill MCP server processes
     await sleep(60 * 3) // sleep 3 minutes
   } catch (error) {
     console.error(error)
+    await cleanupMcpServer() // cleanup on error too
     await sleep(10) // sleep 10 seconds
   }
 }

@@ -12,6 +12,7 @@ A successful stable profitable trading system consists of a couple of minor impr
 - Focus on ETHUSDC
 - Focus on 30m timeframe + 5m timeframe
 - TP/SL should be minimum 2:1, and ATR should be used to set TP/SL
+- Move SL to BE after TP1 reached
 - Use market order for entry and TP to save commission fee
 - Use Claude Code ultrathink mode
 - Use `get_symbol_screenshot_across_timeframes`

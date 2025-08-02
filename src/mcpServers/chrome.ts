@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S npx tsx
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
@@ -59,6 +59,9 @@ const toolsList: Tool[] = [
 let browser: Browser | null = null
 let tabs: Page[] = []
 let currentTabIndex = 0
+
+// Maximum number of tabs to keep open
+const MAX_TABS = 1
 
 async function getBrowser(): Promise<Browser> {
   if (!browser) {
@@ -296,13 +299,62 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
   }
 })
 
+async function cleanup() {
+  console.error('Cleaning up Chrome MCP Server...')
+  
+  // Close all tabs
+  if (tabs.length > 0) {
+    for (const tab of tabs) {
+      try {
+        await tab.close()
+      } catch (e) {
+        // Tab might already be closed
+      }
+    }
+    tabs = []
+  }
+  
+  // Disconnect from browser
+  if (browser) {
+    try {
+      browser.disconnect()
+    } catch (e) {
+      // Browser might already be disconnected
+    }
+    browser = null
+  }
+  
+  console.error('Chrome MCP Server cleanup complete')
+}
+
 async function runServer() {
   const transport = new StdioServerTransport()
+  
+  // Set up cleanup handlers
+  process.on('SIGINT', async () => {
+    await cleanup()
+    process.exit(0)
+  })
+  
+  process.on('SIGTERM', async () => {
+    await cleanup()
+    process.exit(0)
+  })
+  
+  process.on('exit', () => {
+    // Synchronous cleanup if needed
+    if (browser) {
+      browser.disconnect()
+    }
+  })
+  
   await server.connect(transport)
   console.error('Chrome MCP Server running on stdio')
 }
 
 runServer().catch(error => {
   console.error('Fatal error running server:', error)
-  process.exit(1)
+  cleanup().finally(() => {
+    process.exit(1)
+  })
 })

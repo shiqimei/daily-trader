@@ -72,7 +72,8 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
       • Update our post-only TP orders as strcuture changed
     !! Check order creation status and recreate if failed
     !! Create orders if some are missing to ensure our SL/TP well executed
-    ☐ Exit → Record trade exit → mcp__tradingJournal__update_trade_exit
+    ☐ Exit → Get account balance → mcp__binance__get_account → Record trade exit → mcp__tradingJournal__update_trade_exit
+      • ALWAYS include account_balance parameter after getting current balance
     ☐ Post-trade → Add review → mcp__tradingJournal__add_post_trade_review
       • Grade execution quality, note mistakes/lessons
       • Record emotional state and rule adherence
@@ -83,9 +84,10 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 7. Trade Journal Management
     ☐ Pre-trade analysis → mcp__tradingJournal__add_pre_trade_analysis
     ☐ Trade entry → mcp__tradingJournal__add_trade_entry
-    ☐ Trade exit → mcp__tradingJournal__update_trade_exit
+    ☐ Trade exit → mcp__tradingJournal__update_trade_exit (with account_balance)
     ☐ Post-trade review → mcp__tradingJournal__add_post_trade_review
     ☐ Include ATR values used and order IDs for tracking
+    ☐ ALWAYS capture account balance after trade completion for performance tracking
 ```
 
 # Critical Rules (NEVER VIOLATE)

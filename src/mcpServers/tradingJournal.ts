@@ -82,6 +82,7 @@ interface UpdateTradeExitArgs {
   exit_time: string
   fees: number
   exit_reason: string
+  account_balance?: number
 }
 
 interface AddPostTradeReviewArgs {
@@ -154,7 +155,8 @@ const tradingJournalTools: Tool[] = [
         exit_price: { type: 'number', description: 'Exit price' },
         exit_time: { type: 'string', description: 'Exit time (YYYY-MM-DD HH:MM:SS)' },
         fees: { type: 'number', description: 'Exit fees' },
-        exit_reason: { type: 'string', description: 'Reason for exit (TP hit, SL hit, manual exit, etc.)' }
+        exit_reason: { type: 'string', description: 'Reason for exit (TP hit, SL hit, manual exit, etc.)' },
+        account_balance: { type: 'number', description: 'Account balance after trade completion (optional)' }
       },
       required: ['trade_id', 'exit_price', 'exit_time', 'fees', 'exit_reason']
     }
@@ -311,7 +313,7 @@ class TradingJournalDatabase {
     return this.db.prepare('SELECT * FROM trades WHERE id = ?').get(tradeId) as Trade
   }
 
-  updateTradeExit(tradeId: number, exitPrice: number, exitTime: string, fees: number, exitReason: string): Trade {
+  updateTradeExit(tradeId: number, exitPrice: number, exitTime: string, fees: number, exitReason: string, accountBalance?: number): Trade {
     const trade = this.db.prepare('SELECT * FROM trades WHERE id = ?').get(tradeId) as Trade
     if (!trade) throw new Error(`Trade ${tradeId} not found`)
 
@@ -329,11 +331,11 @@ class TradingJournalDatabase {
       UPDATE trades 
       SET exit_price = ?, exit_time = ?, pnl = ?, r_multiple = ?, 
           fees = ?, net_pnl = ?, exit_reason = ?, win_loss = ?, 
-          updated_at = CURRENT_TIMESTAMP
+          account_balance = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `)
     
-    stmt.run(exitPrice, exitTime, grossPnl, rMultiple, totalFees, netPnl, exitReason, winLoss, tradeId)
+    stmt.run(exitPrice, exitTime, grossPnl, rMultiple, totalFees, netPnl, exitReason, winLoss, accountBalance || null, tradeId)
 
     // Update performance stats
     this.updatePerformanceStats()
@@ -541,12 +543,13 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           exitArgs.exit_price,
           exitArgs.exit_time,
           exitArgs.fees,
-          exitArgs.exit_reason
+          exitArgs.exit_reason,
+          exitArgs.account_balance
         )
         return {
           content: [{
             type: 'text',
-            text: `Trade exit updated:\nTrade ID: ${trade.id}\nExit: ${trade.exit_price}\nP&L: ${trade.pnl?.toFixed(2)}\nNet P&L: ${trade.net_pnl?.toFixed(2)}\nR-Multiple: ${trade.r_multiple?.toFixed(2)}\nResult: ${trade.win_loss}`
+            text: `Trade exit updated:\nTrade ID: ${trade.id}\nExit: ${trade.exit_price}\nP&L: ${trade.pnl?.toFixed(2)}\nNet P&L: ${trade.net_pnl?.toFixed(2)}\nR-Multiple: ${trade.r_multiple?.toFixed(2)}\nResult: ${trade.win_loss}${trade.account_balance ? `\nAccount Balance: ${trade.account_balance.toFixed(2)}` : ''}`
           }]
         }
       } catch (error) {
@@ -583,16 +586,11 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           }
         }
 
-        const tradeText = trades.map(t => 
-          `[${t.id}] ${t.date || 'Planned'} ${t.symbol} ${t.side} ${t.setup_type}\n` +
-          `Entry: ${t.entry_price} | Exit: ${t.exit_price || 'Open'} | ` +
-          `P&L: ${t.net_pnl?.toFixed(2) || 'N/A'} | R: ${t.r_multiple?.toFixed(2) || 'N/A'}`
-        ).join('\n\n')
-
+        // Return raw JSON data from database
         return {
           content: [{
             type: 'text',
-            text: `Trades:\n\n${tradeText}`
+            text: JSON.stringify(trades, null, 2)
           }]
         }
       } catch (error) {

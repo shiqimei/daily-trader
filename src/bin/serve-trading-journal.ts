@@ -1,15 +1,22 @@
 /**
  * Trading Journal Dashboard - serves trading journal data
- * It renders all trades as a modern responsive web ui.
+ * It renders all trades as a modern responsive web ui with TradingView-inspired design.
  */
 
 import { db } from '@/database'
 import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
 import { createServer } from 'http'
 import Database from 'better-sqlite3'
 import { promises as fs } from 'fs'
 import { join } from 'path'
 import { logger } from '@/utils/logger'
+
+// Configure dayjs with timezone support
+dayjs.extend(utc)
+dayjs.extend(timezone)
+const DISPLAY_TIMEZONE = 'Asia/Singapore' // UTC+8
 
 interface Trade {
   id: number
@@ -51,6 +58,51 @@ interface Trade {
 
 const PORT = process.env.PORT || 3001
 
+// Initialize trades table if it doesn't exist
+db.exec(`
+  CREATE TABLE IF NOT EXISTS trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT,
+    time TEXT,
+    symbol TEXT NOT NULL,
+    setup_type TEXT NOT NULL,
+    side TEXT NOT NULL CHECK (side IN ('LONG', 'SHORT')),
+    qty REAL NOT NULL,
+    entry_price REAL NOT NULL,
+    stop_loss REAL NOT NULL,
+    target REAL NOT NULL,
+    exit_price REAL,
+    exit_time TEXT,
+    pnl REAL,
+    r_multiple REAL,
+    fees REAL DEFAULT 0,
+    net_pnl REAL,
+    market_context TEXT,
+    trend TEXT,
+    key_levels TEXT,
+    entry_trigger TEXT,
+    risk_percent REAL,
+    position_size_rationale TEXT,
+    confluence_factors INTEGER,
+    exit_reason TEXT,
+    trade_grade TEXT,
+    execution_quality TEXT,
+    mistakes TEXT,
+    lessons TEXT,
+    emotional_state TEXT,
+    followed_rules INTEGER,
+    account_balance REAL,
+    win_loss TEXT CHECK (win_loss IN ('WIN', 'LOSS', 'BE', NULL)),
+    cumulative_pnl REAL,
+    win_rate REAL,
+    avg_win REAL,
+    avg_loss REAL,
+    max_drawdown REAL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`)
+
 // Database statements
 const getAllTradesStmt = db.prepare(`
   SELECT * FROM trades 
@@ -80,7 +132,8 @@ function getTrades(limit?: number): Trade[] {
 function formatDateTime(dateStr: string | null, timeStr: string | null): string {
   if (!dateStr) return 'Not executed'
   const fullDateTime = timeStr ? `${dateStr} ${timeStr}` : dateStr
-  return dayjs(fullDateTime).format('MMM D, YYYY HH:mm:ss')
+  // Parse as UTC and convert to UTC+8
+  return dayjs.utc(fullDateTime).tz(DISPLAY_TIMEZONE).format('MMM D, YYYY HH:mm:ss')
 }
 
 function formatTradeStatus(trade: Trade): string {
@@ -111,137 +164,172 @@ function getStatusColor(trade: Trade): string {
 }
 
 function renderHTML(trades: Trade[]): string {
+  // Calculate performance stats
+  const closedTrades = trades.filter(t => t.exit_price !== null)
+  const winTrades = closedTrades.filter(t => t.win_loss === 'WIN')
+  const lossTrades = closedTrades.filter(t => t.win_loss === 'LOSS')
+  const totalPnL = closedTrades.reduce((sum, t) => sum + (t.net_pnl || 0), 0)
+  const winRate = closedTrades.length > 0 ? (winTrades.length / closedTrades.length * 100).toFixed(1) : '0'
+  const avgWin = winTrades.length > 0 ? winTrades.reduce((sum, t) => sum + (t.net_pnl || 0), 0) / winTrades.length : 0
+  const avgLoss = lossTrades.length > 0 ? Math.abs(lossTrades.reduce((sum, t) => sum + (t.net_pnl || 0), 0) / lossTrades.length) : 0
+  const profitFactor = avgLoss > 0 ? (avgWin / avgLoss).toFixed(2) : 'N/A'
+
   const tradeCards = trades
     .map(trade => {
-      const statusColor = getStatusColor(trade)
       const rr = trade.target && trade.entry_price && trade.stop_loss
         ? Math.abs((trade.target - trade.entry_price) / (trade.entry_price - trade.stop_loss))
         : 0
 
       return `
-    <div class="trade-card ${statusColor}" data-trade-id="${trade.id}">
+    <div class="trade-card ${getStatusColor(trade)}">
       <div class="trade-header">
         <div class="trade-header-left">
-          <div class="trade-id">Trade #${trade.id}</div>
-          <div class="trade-symbol">${trade.symbol}</div>
-          <div class="trade-status">${formatTradeStatus(trade)}</div>
+          <span class="symbol">${trade.symbol}</span>
+          <span class="trade-id">#${trade.id}</span>
+          <span class="side-badge ${trade.side.toLowerCase()}">${trade.side}</span>
+          <span class="status-badge ${trade.win_loss ? trade.win_loss.toLowerCase() : 'open'}">
+            ${formatTradeStatus(trade)}
+          </span>
         </div>
         <div class="trade-header-right">
-          <div class="trade-side ${trade.side.toLowerCase()}">${trade.side}</div>
-          <div class="trade-setup">${trade.setup_type}</div>
+          <span class="date">${trade.date ? dayjs.utc(trade.date).tz(DISPLAY_TIMEZONE).format('MMM D, YYYY') : 'Pending'}</span>
+          <span class="time">${trade.time ? dayjs.utc(`${trade.date} ${trade.time}`).tz(DISPLAY_TIMEZONE).format('HH:mm:ss') : ''}</span>
         </div>
       </div>
       
-      <div class="trade-content">
-        <div class="trade-section">
-          <h4>Entry Details</h4>
-          <div class="trade-detail">
-            <span class="label">Date/Time:</span>
-            <span>${formatDateTime(trade.date, trade.time)}</span>
+      <div class="trade-body">
+        <div class="trade-main-info">
+          <div class="info-group">
+            <div class="info-item">
+              <span class="label">Entry</span>
+              <span class="value">${formatPrice(trade.entry_price)}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">Stop Loss</span>
+              <span class="value">${formatPrice(trade.stop_loss)}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">Target</span>
+              <span class="value">${formatPrice(trade.target)}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">Size</span>
+              <span class="value">${trade.qty}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">R:R</span>
+              <span class="value">1:${rr.toFixed(2)}</span>
+            </div>
           </div>
-          <div class="trade-detail">
-            <span class="label">Entry Price:</span>
-            <span>${formatPrice(trade.entry_price)}</span>
+          
+          ${trade.exit_price ? `
+          <div class="info-group">
+            <div class="info-item">
+              <span class="label">Exit</span>
+              <span class="value">${formatPrice(trade.exit_price)}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">Exit Time</span>
+              <span class="value">${trade.exit_time ? dayjs.utc(trade.exit_time).tz(DISPLAY_TIMEZONE).format('HH:mm:ss') : 'N/A'}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">P&L</span>
+              <span class="value ${trade.net_pnl && trade.net_pnl > 0 ? 'profit' : 'loss'}">${formatPnL(trade.net_pnl)}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">R-Multiple</span>
+              <span class="value">${trade.r_multiple?.toFixed(2) || 'N/A'}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">Fees</span>
+              <span class="value">${trade.fees.toFixed(2)}</span>
+            </div>
           </div>
-          <div class="trade-detail">
-            <span class="label">Stop Loss:</span>
-            <span>${formatPrice(trade.stop_loss)}</span>
-          </div>
-          <div class="trade-detail">
-            <span class="label">Target:</span>
-            <span>${formatPrice(trade.target)}</span>
-          </div>
-          <div class="trade-detail">
-            <span class="label">Risk/Reward:</span>
-            <span>1:${rr.toFixed(2)}</span>
-          </div>
-          <div class="trade-detail">
-            <span class="label">Position Size:</span>
-            <span>${trade.qty}</span>
-          </div>
+          ` : ''}
         </div>
         
-        ${trade.exit_price ? `
-        <div class="trade-section">
-          <h4>Exit Details</h4>
-          <div class="trade-detail">
-            <span class="label">Exit Time:</span>
-            <span>${formatDateTime(null, trade.exit_time)}</span>
+        ${trade.market_context || trade.setup_type ? `
+        <div class="trade-analysis">
+          <h4>Analysis</h4>
+          <div class="analysis-content">
+            <div class="analysis-item">
+              <span class="label">Setup</span>
+              <span class="value">${trade.setup_type}</span>
+            </div>
+            ${trade.trend ? `
+            <div class="analysis-item">
+              <span class="label">Trend</span>
+              <span class="value">${trade.trend}</span>
+            </div>
+            ` : ''}
+            ${trade.confluence_factors ? `
+            <div class="analysis-item">
+              <span class="label">Confluence</span>
+              <span class="value">${trade.confluence_factors}/5</span>
+            </div>
+            ` : ''}
+            ${trade.risk_percent ? `
+            <div class="analysis-item">
+              <span class="label">Risk %</span>
+              <span class="value">${trade.risk_percent}%</span>
+            </div>
+            ` : ''}
           </div>
-          <div class="trade-detail">
-            <span class="label">Exit Price:</span>
-            <span>${formatPrice(trade.exit_price)}</span>
+          ${trade.market_context ? `
+          <div class="context-text">
+            <strong>Context:</strong> ${trade.market_context}
           </div>
-          <div class="trade-detail">
-            <span class="label">Exit Reason:</span>
-            <span>${trade.exit_reason || 'N/A'}</span>
+          ` : ''}
+          ${trade.entry_trigger ? `
+          <div class="context-text">
+            <strong>Trigger:</strong> ${trade.entry_trigger}
           </div>
-          <div class="trade-detail">
-            <span class="label">P&L:</span>
-            <span class="${trade.pnl && trade.pnl > 0 ? 'profit' : 'loss'}">${formatPnL(trade.pnl)}</span>
-          </div>
-          <div class="trade-detail">
-            <span class="label">Net P&L:</span>
-            <span class="${trade.net_pnl && trade.net_pnl > 0 ? 'profit' : 'loss'}">${formatPnL(trade.net_pnl)}</span>
-          </div>
-          <div class="trade-detail">
-            <span class="label">R-Multiple:</span>
-            <span>${trade.r_multiple?.toFixed(2) || 'N/A'}</span>
-          </div>
+          ` : ''}
         </div>
         ` : ''}
         
-        ${trade.market_context ? `
-        <div class="trade-section">
-          <h4>Pre-Trade Analysis</h4>
-          <div class="trade-detail">
-            <span class="label">Market Context:</span>
-            <span>${trade.market_context}</span>
+        ${trade.trade_grade || trade.exit_reason ? `
+        <div class="trade-review">
+          <h4>Review</h4>
+          <div class="review-content">
+            ${trade.trade_grade ? `
+            <div class="review-item">
+              <span class="label">Grade</span>
+              <span class="value grade-${trade.trade_grade?.toLowerCase()}">${trade.trade_grade}</span>
+            </div>
+            ` : ''}
+            ${trade.execution_quality ? `
+            <div class="review-item">
+              <span class="label">Execution</span>
+              <span class="value">${trade.execution_quality}</span>
+            </div>
+            ` : ''}
+            ${trade.emotional_state ? `
+            <div class="review-item">
+              <span class="label">Emotion</span>
+              <span class="value">${trade.emotional_state}</span>
+            </div>
+            ` : ''}
+            ${trade.followed_rules !== null ? `
+            <div class="review-item">
+              <span class="label">Rules</span>
+              <span class="value">${trade.followed_rules ? '✓ Yes' : '✗ No'}</span>
+            </div>
+            ` : ''}
           </div>
-          <div class="trade-detail">
-            <span class="label">Trend:</span>
-            <span>${trade.trend || 'N/A'}</span>
+          ${trade.exit_reason ? `
+          <div class="context-text">
+            <strong>Exit Reason:</strong> ${trade.exit_reason}
           </div>
-          <div class="trade-detail">
-            <span class="label">Entry Trigger:</span>
-            <span>${trade.entry_trigger || 'N/A'}</span>
-          </div>
-          <div class="trade-detail">
-            <span class="label">Confluence Factors:</span>
-            <span>${trade.confluence_factors || 'N/A'}/5</span>
-          </div>
-        </div>
-        ` : ''}
-        
-        ${trade.trade_grade ? `
-        <div class="trade-section">
-          <h4>Post-Trade Review</h4>
-          <div class="trade-detail">
-            <span class="label">Grade:</span>
-            <span class="grade-${trade.trade_grade?.toLowerCase()}">${trade.trade_grade}</span>
-          </div>
-          <div class="trade-detail">
-            <span class="label">Execution Quality:</span>
-            <span>${trade.execution_quality || 'N/A'}</span>
-          </div>
-          <div class="trade-detail">
-            <span class="label">Emotional State:</span>
-            <span>${trade.emotional_state || 'N/A'}</span>
-          </div>
-          <div class="trade-detail">
-            <span class="label">Followed Rules:</span>
-            <span>${trade.followed_rules ? 'Yes' : 'No'}</span>
-          </div>
+          ` : ''}
           ${trade.mistakes ? `
-          <div class="trade-detail">
-            <span class="label">Mistakes:</span>
-            <span>${trade.mistakes}</span>
+          <div class="context-text">
+            <strong>Mistakes:</strong> ${trade.mistakes}
           </div>
           ` : ''}
           ${trade.lessons ? `
-          <div class="trade-detail">
-            <span class="label">Lessons:</span>
-            <span>${trade.lessons}</span>
+          <div class="context-text">
+            <strong>Lessons:</strong> ${trade.lessons}
           </div>
           ` : ''}
         </div>
@@ -257,23 +345,30 @@ function renderHTML(trades: Trade[]): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trading Journal Dashboard</title>
+  <title>Trading Journal - Professional Trading Analytics</title>
   <style>
     :root {
-      --background: 220 16% 13%;
-      --foreground: 0 0% 100%;
-      --card: 222 16% 16%;
-      --card-foreground: 0 0% 100%;
-      --border: 217 15% 20%;
-      --primary: 213 94% 64%;
-      --primary-foreground: 0 0% 100%;
-      --secondary: 215 14% 20%;
-      --secondary-foreground: 0 0% 100%;
-      --muted: 217 15% 20%;
-      --muted-foreground: 215 15% 60%;
-      --success: 120 100% 40%;
-      --danger: 0 84% 60%;
-      --warning: 45 100% 50%;
+      /* TradingView Dark Theme Colors */
+      --tv-color-platform-background: #131722;
+      --tv-color-pane-background: #1e222d;
+      --tv-color-toolbar-background: #2a2e39;
+      --tv-color-success: #26a69a;
+      --tv-color-success-hover: #22877a;
+      --tv-color-danger: #ef5350;
+      --tv-color-danger-hover: #b71c1c;
+      --tv-color-warning: #ff9800;
+      --tv-color-brand: #2962ff;
+      --tv-color-brand-hover: #1e53e5;
+      --tv-color-text-primary: #d1d4dc;
+      --tv-color-text-secondary: #787b86;
+      --tv-color-border: #363a45;
+      --tv-color-input-background: #1e222d;
+      --tv-color-popup-background: #2a2e39;
+      --tv-color-popup-border: #363a45;
+      --tv-color-item-hover-background: #2a2e39;
+      --tv-color-item-selected-background: #142e61;
+      --tv-color-scrollbar: #363a45;
+      --tv-color-tooltip-background: #434651;
     }
     
     * {
@@ -283,237 +378,442 @@ function renderHTML(trades: Trade[]): string {
     }
     
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background-color: hsl(var(--background));
-      color: hsl(var(--foreground));
-      line-height: 1.6;
-      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen, Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+      background-color: var(--tv-color-platform-background);
+      color: var(--tv-color-text-primary);
+      line-height: 1.5;
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    
+    .header {
+      background-color: var(--tv-color-pane-background);
+      border-bottom: 1px solid var(--tv-color-border);
+      padding: 16px 0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+    }
+    
+    .header-content {
+      max-width: 1920px;
+      margin: 0 auto;
+      padding: 0 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .logo {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--tv-color-text-primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .logo::before {
+      content: "📊";
+      font-size: 24px;
+    }
+    
+    .stats-bar {
+      display: flex;
+      gap: 32px;
+      align-items: center;
+    }
+    
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    
+    .stat-label {
+      font-size: 11px;
+      color: var(--tv-color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .stat-value {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--tv-color-text-primary);
+    }
+    
+    .stat-value.positive {
+      color: var(--tv-color-success);
+    }
+    
+    .stat-value.negative {
+      color: var(--tv-color-danger);
     }
     
     .container {
-      max-width: 1400px;
+      max-width: 1920px;
       margin: 0 auto;
-      padding: 2rem;
+      padding: 20px;
     }
     
-    h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-      margin-bottom: 2rem;
-      text-align: center;
-      background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--primary) / 0.8));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    
-    .trade-grid {
+    .trades-container {
       display: grid;
-      gap: 1.5rem;
-      grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+      gap: 20px;
     }
     
     .trade-card {
-      background-color: hsl(var(--card));
-      border: 1px solid hsl(var(--border));
-      border-radius: 0.5rem;
+      background-color: var(--tv-color-pane-background);
+      border: 1px solid var(--tv-color-border);
+      border-radius: 4px;
       overflow: hidden;
-      transition: all 0.3s ease;
+      transition: all 0.15s ease;
     }
     
     .trade-card:hover {
-      box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-      transform: translateY(-1px);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
     
-    .trade-card.status-win {
-      border-left: 4px solid hsl(var(--success));
-    }
-    
-    .trade-card.status-loss {
-      border-left: 4px solid hsl(var(--danger));
-    }
-    
-    .trade-card.status-be {
-      border-left: 4px solid hsl(var(--warning));
-    }
-    
-    .trade-card.status-open {
-      border-left: 4px solid hsl(var(--primary));
-    }
     
     .trade-header {
-      background-color: hsl(var(--muted) / 0.5);
-      border-bottom: 1px solid hsl(var(--border));
-      padding: 1rem 1.5rem;
+      background-color: var(--tv-color-toolbar-background);
+      padding: 12px 16px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      border-bottom: 1px solid var(--tv-color-border);
     }
     
-    .trade-header-left, .trade-header-right {
+    .trade-header-left {
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 12px;
+    }
+    
+    .trade-header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--tv-color-text-secondary);
+      font-size: 12px;
+    }
+    
+    .symbol {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--tv-color-text-primary);
     }
     
     .trade-id {
-      font-size: 1.125rem;
-      font-weight: 600;
-      color: hsl(var(--primary));
+      color: var(--tv-color-text-secondary);
+      font-size: 12px;
     }
     
-    .trade-symbol {
-      font-size: 1rem;
+    .side-badge {
+      display: inline-flex;
+      padding: 3px 8px;
+      border-radius: 2px;
+      font-size: 11px;
       font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
     
-    .trade-status {
-      font-size: 0.875rem;
-      padding: 0.25rem 0.75rem;
-      border-radius: 9999px;
-      background-color: hsl(var(--primary) / 0.2);
-      color: hsl(var(--primary));
+    .side-badge.long {
+      background-color: rgba(38, 166, 154, 0.15);
+      color: var(--tv-color-success);
     }
     
-    .trade-side {
-      font-size: 0.875rem;
-      font-weight: 600;
-      padding: 0.25rem 0.75rem;
-      border-radius: 0.25rem;
+    .side-badge.short {
+      background-color: rgba(239, 83, 80, 0.15);
+      color: var(--tv-color-danger);
     }
     
-    .trade-side.long {
-      background-color: hsl(var(--success) / 0.2);
-      color: hsl(var(--success));
+    .status-badge {
+      display: inline-flex;
+      padding: 3px 8px;
+      border-radius: 2px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
     
-    .trade-side.short {
-      background-color: hsl(var(--danger) / 0.2);
-      color: hsl(var(--danger));
+    .status-badge.win {
+      background-color: rgba(38, 166, 154, 0.15);
+      color: var(--tv-color-success);
     }
     
-    .trade-setup {
-      font-size: 0.875rem;
-      color: hsl(var(--muted-foreground));
+    .status-badge.loss {
+      background-color: rgba(239, 83, 80, 0.15);
+      color: var(--tv-color-danger);
     }
     
-    .trade-content {
-      padding: 1.5rem;
+    .status-badge.be {
+      background-color: rgba(255, 152, 0, 0.15);
+      color: var(--tv-color-warning);
     }
     
-    .trade-section {
-      margin-bottom: 1.5rem;
+    .status-badge.open {
+      background-color: rgba(41, 98, 255, 0.15);
+      color: var(--tv-color-brand);
     }
     
-    .trade-section:last-child {
+    .trade-body {
+      padding: 16px;
+    }
+    
+    .trade-main-info {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 16px;
+    }
+    
+    .info-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      flex: 1;
+    }
+    
+    .info-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 80px;
+    }
+    
+    .info-item .label {
+      font-size: 11px;
+      color: var(--tv-color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .info-item .value {
+      font-size: 14px;
+      color: var(--tv-color-text-primary);
+      font-weight: 500;
+      font-family: Roboto Mono, monospace;
+    }
+    
+    .info-item .value.profit {
+      color: var(--tv-color-success);
+    }
+    
+    .info-item .value.loss {
+      color: var(--tv-color-danger);
+    }
+    
+    .trade-analysis,
+    .trade-review {
+      background-color: var(--tv-color-platform-background);
+      border: 1px solid var(--tv-color-border);
+      border-radius: 4px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    
+    .trade-analysis:last-child,
+    .trade-review:last-child {
       margin-bottom: 0;
     }
     
-    .trade-section h4 {
-      font-size: 0.875rem;
+    .trade-analysis h4,
+    .trade-review h4 {
+      font-size: 12px;
       font-weight: 600;
-      color: hsl(var(--primary));
-      margin-bottom: 0.75rem;
+      color: var(--tv-color-text-primary);
+      margin-bottom: 8px;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.5px;
     }
     
-    .trade-detail {
+    .analysis-content,
+    .review-content {
       display: flex;
-      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 8px;
+    }
+    
+    .analysis-item,
+    .review-item {
+      display: flex;
       align-items: center;
-      padding: 0.5rem 0;
-      border-bottom: 1px solid hsl(var(--border) / 0.5);
+      gap: 6px;
     }
     
-    .trade-detail:last-child {
-      border-bottom: none;
+    .analysis-item .label,
+    .review-item .label {
+      font-size: 11px;
+      color: var(--tv-color-text-secondary);
     }
     
-    .trade-detail .label {
-      font-size: 0.875rem;
-      color: hsl(var(--muted-foreground));
-    }
-    
-    .trade-detail span:last-child {
-      font-size: 0.875rem;
+    .analysis-item .value,
+    .review-item .value {
+      font-size: 12px;
+      color: var(--tv-color-text-primary);
       font-weight: 500;
     }
     
-    .profit {
-      color: hsl(var(--success));
+    .value.grade-a {
+      color: var(--tv-color-success);
     }
     
-    .loss {
-      color: hsl(var(--danger));
+    .value.grade-b {
+      color: #66bb6a;
     }
     
-    .grade-a {
-      color: hsl(var(--success));
-      font-weight: 600;
+    .value.grade-c {
+      color: var(--tv-color-warning);
     }
     
-    .grade-b {
-      color: hsl(120 60% 50%);
-      font-weight: 600;
+    .value.grade-d,
+    .value.grade-f {
+      color: var(--tv-color-danger);
     }
     
-    .grade-c {
-      color: hsl(var(--warning));
-      font-weight: 600;
+    .context-text {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--tv-color-text-secondary);
+      margin-top: 8px;
     }
     
-    .grade-d, .grade-f {
-      color: hsl(var(--danger));
-      font-weight: 600;
+    .context-text strong {
+      color: var(--tv-color-text-primary);
+      font-weight: 500;
     }
     
-    .no-trades {
+    .empty-state-container {
+      background-color: var(--tv-color-pane-background);
+      border: 1px solid var(--tv-color-border);
+      border-radius: 4px;
+      padding: 60px 20px;
+    }
+    
+    .empty-state {
       text-align: center;
-      color: hsl(var(--muted-foreground));
-      padding: 4rem 2rem;
-      font-size: 1.125rem;
+      padding: 80px 20px;
+      color: var(--tv-color-text-secondary);
+    }
+    
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+    
+    .empty-state-title {
+      font-size: 18px;
+      margin-bottom: 8px;
+      color: var(--tv-color-text-primary);
+    }
+    
+    .empty-state-description {
+      font-size: 14px;
+    }
+    
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: var(--tv-color-pane-background);
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: var(--tv-color-scrollbar);
+      border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--tv-color-text-secondary);
     }
     
     @media (max-width: 768px) {
+      .header-content {
+        flex-direction: column;
+        gap: 16px;
+      }
+      
+      .stats-bar {
+        width: 100%;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      
+      .stat-item {
+        align-items: center;
+      }
+      
       .container {
-        padding: 1rem;
+        padding: 12px;
       }
       
-      h1 {
-        font-size: 2rem;
-      }
-      
-      .trade-grid {
+      .trades-container {
         grid-template-columns: 1fr;
       }
       
-      .trade-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.5rem;
+      .trade-card {
+        margin: 0;
       }
       
-      .trade-header-right {
-        width: 100%;
-        justify-content: space-between;
+      .trade-main-info {
+        flex-direction: column;
+        gap: 16px;
       }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Trading Journal Dashboard</h1>
-    
-    <div class="trade-grid" id="tradeGrid">
-        ${
-          trades.length > 0
-            ? tradeCards
-            : '<div class="no-trades">No trades found. Start trading to see your journal entries here.</div>'
-        }
+  <header class="header">
+    <div class="header-content">
+      <div class="logo">Trading Journal <span style="font-size: 12px; color: var(--tv-color-text-secondary); font-weight: 400;">(UTC+8)</span></div>
+      <div class="stats-bar">
+        <div class="stat-item">
+          <span class="stat-label">Total Trades</span>
+          <span class="stat-value">${trades.length}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Win Rate</span>
+          <span class="stat-value">${winRate}%</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Total P&L</span>
+          <span class="stat-value ${totalPnL >= 0 ? 'positive' : 'negative'}">${totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Profit Factor</span>
+          <span class="stat-value">${profitFactor}</span>
+        </div>
+      </div>
     </div>
-  </div>
+  </header>
   
+  <div class="container">
+    ${trades.length > 0 ? `
+      <div class="trades-container">
+        ${tradeCards}
+      </div>
+    ` : `
+      <div class="empty-state-container">
+        <div class="empty-state">
+          <div class="empty-state-icon">📊</div>
+          <h2 class="empty-state-title">No trades yet</h2>
+          <p class="empty-state-description">Start trading to see your journal entries here</p>
+        </div>
+      </div>
+    `}
+  </div>
 </body>
 </html>`
 }

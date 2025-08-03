@@ -17,3 +17,4 @@ A successful stable profitable trading system consists of a couple of minor impr
 - Use Claude Code ultrathink mode
 - Use chrome mcp server and its `get_symbol_screenshot_across_timeframes`
 - Use tradingJournal mcp server for journal pattern, self-reflection and improvement
+- Reduce the frequency of bad trades rather than just managing them better

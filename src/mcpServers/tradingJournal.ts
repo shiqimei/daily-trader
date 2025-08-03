@@ -180,11 +180,11 @@ const tradingJournalTools: Tool[] = [
   },
   {
     name: 'list_trades',
-    description: 'List trades with optional filters',
+    description: 'List trades in compact CSV format for maximum token efficiency',
     inputSchema: {
       type: 'object',
       properties: {
-        last_n: { type: 'number', description: 'Number of recent trades (default: 10)' },
+        last_n: { type: 'number', description: 'Number of recent trades (default: 20)' },
         symbol: { type: 'string', description: 'Filter by symbol' },
         setup_type: { type: 'string', description: 'Filter by setup type' },
         from_date: { type: 'string', description: 'Filter from date (YYYY-MM-DD)' },
@@ -387,10 +387,10 @@ class TradingJournalDatabase {
 
     query += ' ORDER BY id DESC'
     
-    if (args.last_n) {
-      query += ' LIMIT ?'
-      params.push(args.last_n)
-    }
+    // Default to 20 trades if no limit specified
+    const limit = args.last_n || 20
+    query += ' LIMIT ?'
+    params.push(limit)
 
     const stmt = this.db.prepare(query)
     return stmt.all(...params) as Trade[]
@@ -575,22 +575,75 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
     case 'list_trades': {
       const listArgs = (args || {}) as ListTradesArgs
       try {
-        const trades = journalDb.listTrades({ last_n: 10, ...listArgs })
+        const trades = journalDb.listTrades({ last_n: 20, ...listArgs })
         
         if (trades.length === 0) {
           return {
             content: [{
               type: 'text',
-              text: 'No trades found'
+              text: 'trades: []'
             }]
           }
         }
 
-        // Return raw JSON data from database
+        // Convert to compact CSV format with all columns
+        const csvHeader = 'id,date,time,symbol,setup_type,side,qty,entry_price,stop_loss,target,exit_price,exit_time,pnl,r_multiple,fees,net_pnl,market_context,trend,key_levels,entry_trigger,risk_percent,position_size_rationale,confluence_factors,exit_reason,trade_grade,execution_quality,mistakes,lessons,emotional_state,followed_rules,account_balance,win_loss,cumulative_pnl,win_rate,avg_win,avg_loss,max_drawdown,created_at,updated_at'
+        const csvRows = trades.map(trade => {
+          return [
+            trade.id,
+            trade.date || '',
+            trade.time || '',
+            trade.symbol,
+            trade.setup_type,
+            trade.side,
+            trade.qty,
+            trade.entry_price,
+            trade.stop_loss,
+            trade.target,
+            trade.exit_price || '',
+            trade.exit_time || '',
+            trade.pnl || '',
+            trade.r_multiple || '',
+            trade.fees,
+            trade.net_pnl || '',
+            trade.market_context || '',
+            trade.trend || '',
+            trade.key_levels || '',
+            trade.entry_trigger || '',
+            trade.risk_percent || '',
+            trade.position_size_rationale || '',
+            trade.confluence_factors || '',
+            trade.exit_reason || '',
+            trade.trade_grade || '',
+            trade.execution_quality || '',
+            trade.mistakes || '',
+            trade.lessons || '',
+            trade.emotional_state || '',
+            trade.followed_rules !== null ? trade.followed_rules : '',
+            trade.account_balance || '',
+            trade.win_loss || '',
+            trade.cumulative_pnl || '',
+            trade.win_rate || '',
+            trade.avg_win || '',
+            trade.avg_loss || '',
+            trade.max_drawdown || '',
+            trade.created_at,
+            trade.updated_at
+          ].map(val => {
+            // Escape commas and quotes in CSV values
+            if (typeof val === 'string' && (val.includes(',') || val.includes('"'))) {
+              return `"${val.replace(/"/g, '""')}"`
+            }
+            return val
+          }).join(',')
+        })
+
+        const csvOutput = `${csvHeader}\n${csvRows.join('\n')}`
+
         return {
           content: [{
             type: 'text',
-            text: JSON.stringify(trades, null, 2)
+            text: csvOutput
           }]
         }
       } catch (error) {

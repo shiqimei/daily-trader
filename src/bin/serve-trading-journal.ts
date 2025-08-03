@@ -244,6 +244,12 @@ function renderHTML(trades: Trade[]): string {
               <span class="label">Fees</span>
               <span class="value">${trade.fees.toFixed(2)}</span>
             </div>
+            ${trade.account_balance ? `
+            <div class="info-item">
+              <span class="label">Balance</span>
+              <span class="value">${trade.account_balance.toFixed(2)}</span>
+            </div>
+            ` : ''}
           </div>
           ` : ''}
         </div>

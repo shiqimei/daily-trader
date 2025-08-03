@@ -1,0 +1,1 @@
+- [ ] Sending alerts while any tool calls failed

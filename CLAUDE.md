@@ -15,4 +15,5 @@ A successful stable profitable trading system consists of a couple of minor impr
 - Move SL to BE after TP1 reached
 - Use market order for entry and TP to save commission fee
 - Use Claude Code ultrathink mode
-- Use `get_symbol_screenshot_across_timeframes`
+- Use chrome mcp server and its `get_symbol_screenshot_across_timeframes`
+- Use tradingJournal mcp server for journal pattern, self-reflection and improvement

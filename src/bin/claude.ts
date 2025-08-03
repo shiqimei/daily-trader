@@ -36,7 +36,7 @@ async function cleanupMcpServer() {
     logger.info('Cleaning up MCP server processes...')
     
     // Find processes spawned by Claude that contain MCP server paths
-    const { stdout } = await execAsync(`ps aux | grep -E "(binance\.ts|chrome\.ts|memo\.ts|wechat\.ts)" | grep -v grep | awk '{print $2}'`)
+    const { stdout } = await execAsync(`ps aux | grep -E "(binance\.ts|chrome\.ts|tradingJournal\.ts|wechat\.ts)" | grep -v grep | awk '{print $2}'`)
     
     if (stdout.trim()) {
       const pids = stdout.trim().split('\n').filter(pid => pid)
@@ -64,7 +64,7 @@ async function cleanupMcpServer() {
 async function runClaude() {
   const date = dayjs().format('YYYY-MM-DD HH:mm:ss')
   for await (const message of query({
-    prompt: `UTC:${date} ultrathink, check memos, analyze market, and make decisions`,
+    prompt: `UTC:${date} ultrathink, check trading journal, analyze market, and make decisions`,
     abortController: new AbortController(),
     options: {
       maxTurns: 999,
@@ -104,8 +104,13 @@ async function runClaude() {
         'mcp__binance__get_order_history',
         'mcp__binance__get_position_history',
         'mcp__binance__get_income_history',
-        'mcp__memo__add_memo',
-        'mcp__memo__list_memos',
+        'mcp__tradingJournal__add_pre_trade_analysis',
+        'mcp__tradingJournal__add_trade_entry',
+        'mcp__tradingJournal__update_trade_exit',
+        'mcp__tradingJournal__add_post_trade_review',
+        'mcp__tradingJournal__list_trades',
+        'mcp__tradingJournal__get_trade_details',
+        'mcp__tradingJournal__get_performance_stats',
         'mcp__wechat__push_notification',
         'mcp__chrome__get_screen_by_symbol',
         'mcp__chrome__get_symbol_screenshot_across_timeframes'
@@ -133,10 +138,10 @@ async function runClaude() {
           command: 'npx',
           args: ['-y', 'tsx', './src/mcpServers/binance.ts']
         },
-        memo: {
+        tradingJournal: {
           type: 'stdio',
           command: 'npx',
-          args: ['-y', 'tsx', './src/mcpServers/memo.ts']
+          args: ['-y', 'tsx', './src/mcpServers/tradingJournal.ts']
         },
         wechat: {
           type: 'stdio',

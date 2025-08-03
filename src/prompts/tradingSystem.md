@@ -27,7 +27,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ mcp__binance__get_account → Check balance, positions
     ☐ mcp__binance__get_open_orders → Check open orders
     ☐ mcp__binance__cancel_order → Clean up duplicate or orphaned orders if any exist
-    ☐ mcp__memo__list_memos → Review recent trades
+    ☐ mcp__tradingJournal__list_trades → Review recent trades
 2. GET market charts & analysis
     ☐ mcp__chrome__get_symbol_screenshot_across_timeframes("ETHUSDC") → Capture 30m, 5m charts
     ☐ Analyze chart patterns, support/resistance, and trend direction from visual data
@@ -54,8 +54,11 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
       • For SHORT: Create GTX order at max(desired_price, best_ask - tick_size)
       • Check order status with orderId
       • If GTX order rejected, retry with adjusted price
-    ☐ Clearly document entry logic, ATR values used, and expected R:R in memo
+    ☐ Document pre-trade analysis → mcp__tradingJournal__add_pre_trade_analysis
+      • Include market context, trend, key levels, entry trigger
+      • Specify setup type, confluence factors, position sizing rationale
 5. Position Management
+    ☐ Entry → Record trade entry → mcp__tradingJournal__add_trade_entry
     ☐ Entry → Set market SL based on ATR + structure
     ☐ Set TP1 (GTX):
       • For LONG close: max(1R_target, best_bid + tick_size)
@@ -69,12 +72,19 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
       • Update our post-only TP orders as strcuture changed
     !! Check order creation status and recreate if failed
     !! Create orders if some are missing to ensure our SL/TP well executed
+    ☐ Exit → Record trade exit → mcp__tradingJournal__update_trade_exit
+    ☐ Post-trade → Add review → mcp__tradingJournal__add_post_trade_review
+      • Grade execution quality, note mistakes/lessons
+      • Record emotional state and rule adherence
 6. Order Verification & Management
     ☐ After creating GTX orders, verify with mcp__binance__get_order using orderId
     ☐ If order status is REJECTED or EXPIRED, recreate with adjusted price
     ☐ Maintain order tracking: entry_orderId, sl_orderId, tp1_orderId, tp2_orderId
-7. Memo Management
-    ☐ Add trading memo → mcp__memo__add_memo
+7. Trade Journal Management
+    ☐ Pre-trade analysis → mcp__tradingJournal__add_pre_trade_analysis
+    ☐ Trade entry → mcp__tradingJournal__add_trade_entry
+    ☐ Trade exit → mcp__tradingJournal__update_trade_exit
+    ☐ Post-trade review → mcp__tradingJournal__add_post_trade_review
     ☐ Include ATR values used and order IDs for tracking
 ```
 
@@ -98,7 +108,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 - ALWAYS verify order creation and recreate if failed
 ```
 
-# Memo Content Format
+# Trade Journal Entry Format
 
 ```yml
 BAL: [total] [available]
@@ -159,5 +169,5 @@ ATR: 5m:18bps 30m:31bps
 Action: LONG @ 3725.81 (GTX filled)
 Watch: Resistance 3737 (TP1), 3748 (TP2), Support 3714 (SL), 3703 recent low must hold
 
-ToolCalls: mcp__binance__get_account, mcp__binance__get_open_orders, mcp__memo__list_memos, mcp__binance__get_ticker_24hr, mcp__chrome__get_symbol_screenshot_across_timeframes, mcp__binance__get_klines, mcp__binance__get_orderbook, mcp__binance__calculate_position_size, mcp__binance__open_long(timeInForce:GTX), mcp__binance__get_order, mcp__binance__set_stop_loss, mcp__binance__set_take_profit(timeInForce:GTX), mcp__memo__add_memo
+ToolCalls: mcp__binance__get_account, mcp__binance__get_open_orders, mcp__tradingJournal__list_trades, mcp__binance__get_ticker_24hr, mcp__chrome__get_symbol_screenshot_across_timeframes, mcp__binance__get_klines, mcp__binance__get_orderbook, mcp__binance__calculate_position_size, mcp__binance__open_long(timeInForce:GTX), mcp__binance__get_order, mcp__binance__set_stop_loss, mcp__binance__set_take_profit(timeInForce:GTX), mcp__tradingJournal__add_pre_trade_analysis, mcp__tradingJournal__add_trade_entry
 ```

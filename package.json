@@ -8,7 +8,7 @@
     "serve-trading-journal": "npx tsx src/bin/serve-trading-journal.ts",
     "trading-system": "npx tsx src/mcpServers/tradingSystem.ts",
     "trading-system-cli": "npx tsx src/bin/trading-system-cli.ts",
-    "chrome": "npx tsx src/bin/start-chrome.ts",
+    "chrome": "npx tsx src/bin/browser.ts",
     "inspect": "npx @modelcontextprotocol/inspector@latest"
   },
   "packageManager": "pnpm@10.13.1",

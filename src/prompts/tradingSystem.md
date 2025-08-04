@@ -28,6 +28,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ mcp__binance__get_open_orders → Check open orders
     ☐ mcp__binance__cancel_order → Clean up duplicate or orphaned orders if any exist
     ☐ mcp__tradingJournal__list_trades → Review recent trades
+    ☐ mcp__binance__get_position_history → Verify journal accuracy against Binance records
 2. GET market charts & analysis
     ☐ mcp__chrome__get_symbol_screenshot_across_timeframes("ETHUSDC") → Capture 30m, 5m charts
     ☐ Analyze chart patterns, support/resistance, and trend direction from visual data

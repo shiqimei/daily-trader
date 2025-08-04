@@ -83,6 +83,9 @@ interface UpdateTradeExitArgs {
   fees: number
   exit_reason: string
   account_balance?: number
+  pnl?: number
+  net_pnl?: number
+  r_multiple?: number
 }
 
 interface AddPostTradeReviewArgs {
@@ -156,7 +159,10 @@ const tradingJournalTools: Tool[] = [
         exit_time: { type: 'string', description: 'Exit time (YYYY-MM-DD HH:MM:SS)' },
         fees: { type: 'number', description: 'Exit fees' },
         exit_reason: { type: 'string', description: 'Reason for exit (TP hit, SL hit, manual exit, etc.)' },
-        account_balance: { type: 'number', description: 'Account balance after trade completion (optional)' }
+        account_balance: { type: 'number', description: 'Account balance after trade completion (optional)' },
+        pnl: { type: 'number', description: 'Override calculated P&L (optional)' },
+        net_pnl: { type: 'number', description: 'Override calculated net P&L (optional)' },
+        r_multiple: { type: 'number', description: 'Override calculated R-multiple (optional)' }
       },
       required: ['trade_id', 'exit_price', 'exit_time', 'fees', 'exit_reason']
     }
@@ -313,18 +319,20 @@ class TradingJournalDatabase {
     return this.db.prepare('SELECT * FROM trades WHERE id = ?').get(tradeId) as Trade
   }
 
-  updateTradeExit(tradeId: number, exitPrice: number, exitTime: string, fees: number, exitReason: string, accountBalance?: number): Trade {
+  updateTradeExit(tradeId: number, exitPrice: number, exitTime: string, fees: number, exitReason: string, accountBalance?: number, pnlOverride?: number, netPnlOverride?: number, rMultipleOverride?: number): Trade {
     const trade = this.db.prepare('SELECT * FROM trades WHERE id = ?').get(tradeId) as Trade
     if (!trade) throw new Error(`Trade ${tradeId} not found`)
 
-    // Calculate P&L and R-multiple
+    // Calculate P&L and R-multiple (use overrides if provided)
     const risk = Math.abs(trade.entry_price - trade.stop_loss)
-    const grossPnl = trade.side === 'LONG' 
+    const calculatedGrossPnl = trade.side === 'LONG' 
       ? (exitPrice - trade.entry_price) * trade.qty
       : (trade.entry_price - exitPrice) * trade.qty
     const totalFees = (trade.fees || 0) + fees
-    const netPnl = grossPnl - totalFees
-    const rMultiple = risk > 0 ? (grossPnl / trade.qty) / risk : 0
+    
+    const grossPnl = pnlOverride !== undefined ? pnlOverride : calculatedGrossPnl
+    const netPnl = netPnlOverride !== undefined ? netPnlOverride : (grossPnl - totalFees)
+    const rMultiple = rMultipleOverride !== undefined ? rMultipleOverride : (risk > 0 ? (grossPnl / trade.qty) / risk : 0)
     const winLoss = netPnl > 0 ? 'WIN' : netPnl < 0 ? 'LOSS' : 'BE'
 
     const stmt = this.db.prepare(`
@@ -544,7 +552,10 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           exitArgs.exit_time,
           exitArgs.fees,
           exitArgs.exit_reason,
-          exitArgs.account_balance
+          exitArgs.account_balance,
+          exitArgs.pnl,
+          exitArgs.net_pnl,
+          exitArgs.r_multiple
         )
         return {
           content: [{

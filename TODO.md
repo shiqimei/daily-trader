@@ -1,1 +1,1 @@
-- [ ] Sending alerts while any tool calls failed
+- [x] Sending alerts while any tool calls failed

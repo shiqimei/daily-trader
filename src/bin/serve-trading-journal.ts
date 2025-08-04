@@ -4,14 +4,11 @@
  */
 
 import { db } from '@/database'
-import dayjs from 'dayjs'
-import utc from 'dayjs/plugin/utc'
-import timezone from 'dayjs/plugin/timezone'
-import { createServer } from 'http'
-import Database from 'better-sqlite3'
-import { promises as fs } from 'fs'
-import { join } from 'path'
 import { logger } from '@/utils/logger'
+import dayjs from 'dayjs'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
+import { createServer } from 'http'
 
 // Configure dayjs with timezone support
 dayjs.extend(utc)
@@ -54,7 +51,6 @@ interface Trade {
   created_at: string
   updated_at: string
 }
-
 
 const PORT = process.env.PORT || 3001
 
@@ -115,7 +111,6 @@ const getTradesWithLimitStmt = db.prepare(`
   LIMIT ?
 `)
 
-
 function getTrades(limit?: number): Trade[] {
   try {
     if (limit && limit > 0) {
@@ -127,7 +122,6 @@ function getTrades(limit?: number): Trade[] {
     return []
   }
 }
-
 
 function formatDateTime(dateStr: string | null, timeStr: string | null): string {
   if (!dateStr) return 'Not executed'
@@ -156,10 +150,14 @@ function formatPnL(pnl: number | null): string {
 function getStatusColor(trade: Trade): string {
   if (!trade.exit_price) return 'status-open'
   switch (trade.win_loss) {
-    case 'WIN': return 'status-win'
-    case 'LOSS': return 'status-loss'
-    case 'BE': return 'status-be'
-    default: return 'status-open'
+    case 'WIN':
+      return 'status-win'
+    case 'LOSS':
+      return 'status-loss'
+    case 'BE':
+      return 'status-be'
+    default:
+      return 'status-open'
   }
 }
 
@@ -169,16 +167,24 @@ function renderHTML(trades: Trade[]): string {
   const winTrades = closedTrades.filter(t => t.win_loss === 'WIN')
   const lossTrades = closedTrades.filter(t => t.win_loss === 'LOSS')
   const totalPnL = closedTrades.reduce((sum, t) => sum + (t.net_pnl || 0), 0)
-  const winRate = closedTrades.length > 0 ? (winTrades.length / closedTrades.length * 100).toFixed(1) : '0'
-  const avgWin = winTrades.length > 0 ? winTrades.reduce((sum, t) => sum + (t.net_pnl || 0), 0) / winTrades.length : 0
-  const avgLoss = lossTrades.length > 0 ? Math.abs(lossTrades.reduce((sum, t) => sum + (t.net_pnl || 0), 0) / lossTrades.length) : 0
+  const winRate =
+    closedTrades.length > 0 ? ((winTrades.length / closedTrades.length) * 100).toFixed(1) : '0'
+  const avgWin =
+    winTrades.length > 0
+      ? winTrades.reduce((sum, t) => sum + (t.net_pnl || 0), 0) / winTrades.length
+      : 0
+  const avgLoss =
+    lossTrades.length > 0
+      ? Math.abs(lossTrades.reduce((sum, t) => sum + (t.net_pnl || 0), 0) / lossTrades.length)
+      : 0
   const profitFactor = avgLoss > 0 ? (avgWin / avgLoss).toFixed(2) : 'N/A'
 
   const tradeCards = trades
     .map(trade => {
-      const rr = trade.target && trade.entry_price && trade.stop_loss
-        ? Math.abs((trade.target - trade.entry_price) / (trade.entry_price - trade.stop_loss))
-        : 0
+      const rr =
+        trade.target && trade.entry_price && trade.stop_loss
+          ? Math.abs((trade.target - trade.entry_price) / (trade.entry_price - trade.stop_loss))
+          : 0
 
       return `
     <div class="trade-card ${getStatusColor(trade)}" data-trade-id="${trade.id}">
@@ -191,8 +197,16 @@ function renderHTML(trades: Trade[]): string {
           </span>
         </div>
         <div class="trade-header-right">
-          <span class="date">${trade.date ? dayjs.utc(trade.date).tz(DISPLAY_TIMEZONE).format('MMM D, YYYY') : 'Pending'}</span>
-          <span class="time">${trade.time ? dayjs.utc(`${trade.date} ${trade.time}`).tz(DISPLAY_TIMEZONE).format('HH:mm:ss') : ''}</span>
+          <span class="date">${
+            trade.date
+              ? dayjs.utc(trade.date).tz(DISPLAY_TIMEZONE).format('MMM D, YYYY')
+              : 'Pending'
+          }</span>
+          <span class="time">${
+            trade.time
+              ? dayjs.utc(`${trade.date} ${trade.time}`).tz(DISPLAY_TIMEZONE).format('HH:mm:ss')
+              : ''
+          }</span>
         </div>
       </div>
       
@@ -221,7 +235,9 @@ function renderHTML(trades: Trade[]): string {
             </div>
           </div>
           
-          ${trade.exit_price ? `
+          ${
+            trade.exit_price
+              ? `
           <div class="info-group">
             <div class="info-item">
               <span class="label">Exit</span>
@@ -229,11 +245,17 @@ function renderHTML(trades: Trade[]): string {
             </div>
             <div class="info-item">
               <span class="label">Exit Time</span>
-              <span class="value">${trade.exit_time ? dayjs.utc(trade.exit_time).tz(DISPLAY_TIMEZONE).format('HH:mm:ss') : 'N/A'}</span>
+              <span class="value">${
+                trade.exit_time
+                  ? dayjs.utc(trade.exit_time).tz(DISPLAY_TIMEZONE).format('HH:mm:ss')
+                  : 'N/A'
+              }</span>
             </div>
             <div class="info-item">
               <span class="label">P&L</span>
-              <span class="value ${trade.net_pnl && trade.net_pnl > 0 ? 'profit' : 'loss'}">${formatPnL(trade.net_pnl)}</span>
+              <span class="value ${
+                trade.net_pnl && trade.net_pnl > 0 ? 'profit' : 'loss'
+              }">${formatPnL(trade.net_pnl)}</span>
             </div>
             <div class="info-item">
               <span class="label">R-Multiple</span>
@@ -243,17 +265,25 @@ function renderHTML(trades: Trade[]): string {
               <span class="label">Fees</span>
               <span class="value">${trade.fees.toFixed(2)}</span>
             </div>
-            ${trade.account_balance ? `
+            ${
+              trade.account_balance
+                ? `
             <div class="info-item">
               <span class="label">Balance</span>
               <span class="value">${trade.account_balance.toFixed(2)}</span>
             </div>
-            ` : ''}
+            `
+                : ''
+            }
           </div>
-          ` : ''}
+          `
+              : ''
+          }
         </div>
         
-        ${trade.market_context || trade.setup_type ? `
+        ${
+          trade.market_context || trade.setup_type
+            ? `
         <div class="trade-analysis">
           <h4>Analysis</h4>
           <div class="analysis-content">
@@ -261,84 +291,140 @@ function renderHTML(trades: Trade[]): string {
               <span class="label">Setup</span>
               <span class="value">${trade.setup_type}</span>
             </div>
-            ${trade.trend ? `
+            ${
+              trade.trend
+                ? `
             <div class="analysis-item">
               <span class="label">Trend</span>
               <span class="value">${trade.trend}</span>
             </div>
-            ` : ''}
-            ${trade.confluence_factors ? `
+            `
+                : ''
+            }
+            ${
+              trade.confluence_factors
+                ? `
             <div class="analysis-item">
               <span class="label">Confluence</span>
               <span class="value">${trade.confluence_factors}/5</span>
             </div>
-            ` : ''}
-            ${trade.risk_percent ? `
+            `
+                : ''
+            }
+            ${
+              trade.risk_percent
+                ? `
             <div class="analysis-item">
               <span class="label">Risk %</span>
               <span class="value">${trade.risk_percent}%</span>
             </div>
-            ` : ''}
+            `
+                : ''
+            }
           </div>
-          ${trade.market_context ? `
+          ${
+            trade.market_context
+              ? `
           <div class="context-text">
             <strong>Context:</strong> ${trade.market_context}
           </div>
-          ` : ''}
-          ${trade.entry_trigger ? `
+          `
+              : ''
+          }
+          ${
+            trade.entry_trigger
+              ? `
           <div class="context-text">
             <strong>Trigger:</strong> ${trade.entry_trigger}
           </div>
-          ` : ''}
+          `
+              : ''
+          }
         </div>
-        ` : ''}
+        `
+            : ''
+        }
         
-        ${trade.trade_grade || trade.exit_reason ? `
+        ${
+          trade.trade_grade || trade.exit_reason
+            ? `
         <div class="trade-review">
           <h4>Review</h4>
           <div class="review-content">
-            ${trade.trade_grade ? `
+            ${
+              trade.trade_grade
+                ? `
             <div class="review-item">
               <span class="label">Grade</span>
-              <span class="value grade-${trade.trade_grade?.toLowerCase()}">${trade.trade_grade}</span>
+              <span class="value grade-${trade.trade_grade?.toLowerCase()}">${
+                    trade.trade_grade
+                  }</span>
             </div>
-            ` : ''}
-            ${trade.execution_quality ? `
+            `
+                : ''
+            }
+            ${
+              trade.execution_quality
+                ? `
             <div class="review-item">
               <span class="label">Execution</span>
               <span class="value">${trade.execution_quality}</span>
             </div>
-            ` : ''}
-            ${trade.emotional_state ? `
+            `
+                : ''
+            }
+            ${
+              trade.emotional_state
+                ? `
             <div class="review-item">
               <span class="label">Emotion</span>
               <span class="value">${trade.emotional_state}</span>
             </div>
-            ` : ''}
-            ${trade.followed_rules !== null ? `
+            `
+                : ''
+            }
+            ${
+              trade.followed_rules !== null
+                ? `
             <div class="review-item">
               <span class="label">Rules</span>
               <span class="value">${trade.followed_rules ? '✓ Yes' : '✗ No'}</span>
             </div>
-            ` : ''}
+            `
+                : ''
+            }
           </div>
-          ${trade.exit_reason ? `
+          ${
+            trade.exit_reason
+              ? `
           <div class="context-text">
             <strong>Exit Reason:</strong> ${trade.exit_reason}
           </div>
-          ` : ''}
-          ${trade.mistakes ? `
+          `
+              : ''
+          }
+          ${
+            trade.mistakes
+              ? `
           <div class="context-text">
             <strong>Mistakes:</strong> ${trade.mistakes}
           </div>
-          ` : ''}
-          ${trade.lessons ? `
+          `
+              : ''
+          }
+          ${
+            trade.lessons
+              ? `
           <div class="context-text">
             <strong>Lessons:</strong> ${trade.lessons}
           </div>
-          ` : ''}
+          `
+              : ''
+          }
         </div>
-        ` : ''}
+        `
+            : ''
+        }
       </div>
     </div>
   `
@@ -905,7 +991,9 @@ function renderHTML(trades: Trade[]): string {
         </div>
         <div class="stat-item">
           <span class="stat-label">Total P&L</span>
-          <span class="stat-value ${totalPnL >= 0 ? 'positive' : 'negative'}">${totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}</span>
+          <span class="stat-value ${totalPnL >= 0 ? 'positive' : 'negative'}">${
+    totalPnL >= 0 ? '+' : ''
+  }${totalPnL.toFixed(2)}</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">Profit Factor</span>
@@ -917,18 +1005,41 @@ function renderHTML(trades: Trade[]): string {
   
   <div class="chart-container">
     <div class="chart-header">
-      <h3>Account Balance: $${trades.filter(t => t.account_balance !== null).length > 0 ? trades.filter(t => t.account_balance !== null).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0].account_balance.toFixed(2) : '0.00'}</h3>
+      <h3>
+        Account Balance: $
+        ${(() => {
+          // Get trades with non-null account_balance
+          const tradesWithBalance = trades.filter(t => t.account_balance !== null)
+          if (tradesWithBalance.length === 0) return '0.00'
+          // Sort by updated_at descending, fallback to created_at if updated_at is missing
+          tradesWithBalance.sort((a, b) => {
+            const aDate = new Date(a.updated_at || a.created_at)
+            const bDate = new Date(b.updated_at || b.created_at)
+            return bDate.getTime() - aDate.getTime()
+          })
+          const latest = tradesWithBalance[0]
+          // Ensure account_balance is a number before calling toFixed
+          const balance =
+            typeof latest.account_balance === 'number'
+              ? latest.account_balance
+              : Number(latest.account_balance)
+          return !isNaN(balance) ? balance.toFixed(2) : '0.00'
+        })()}
+      </h3>
       <button class="refresh-btn" id="refreshBtn" onclick="manualRefresh()">Refresh</button>
     </div>
     <canvas id="balanceChart" width="800" height="300"></canvas>
   </div>
   
   <div class="container">
-    ${trades.length > 0 ? `
+    ${
+      trades.length > 0
+        ? `
       <div class="trades-container">
         ${tradeCards}
       </div>
-    ` : `
+    `
+        : `
       <div class="empty-state-container">
         <div class="empty-state">
           <div class="empty-state-icon"></div>
@@ -936,7 +1047,8 @@ function renderHTML(trades: Trade[]): string {
           <p class="empty-state-description">Start trading to see your journal entries here</p>
         </div>
       </div>
-    `}
+    `
+    }
   </div>
   
   <div class="loading-overlay" id="loadingOverlay">
@@ -950,16 +1062,20 @@ function renderHTML(trades: Trade[]): string {
     let balanceChart = null;
     
     // Prepare chart data from trades with account balance
-    const tradesWithBalance = ${JSON.stringify(trades.filter(t => t.account_balance !== null).map(t => ({
-      id: t.id,
-      date: t.date || t.created_at.split(' ')[0],
-      time: t.time || t.created_at.split(' ')[1],
-      balance: t.account_balance,
-      symbol: t.symbol,
-      side: t.side,
-      net_pnl: t.net_pnl,
-      created_at: t.created_at
-    })))};
+    const tradesWithBalance = ${JSON.stringify(
+      trades
+        .filter(t => t.account_balance !== null)
+        .map(t => ({
+          id: t.id,
+          date: t.date || t.created_at.split(' ')[0],
+          time: t.time || t.created_at.split(' ')[1],
+          balance: t.account_balance,
+          symbol: t.symbol,
+          side: t.side,
+          net_pnl: t.net_pnl,
+          created_at: t.created_at
+        }))
+    )};
     
     // Sort by date/time
     tradesWithBalance.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
@@ -1680,7 +1796,7 @@ const server = createServer((req, res) => {
     res.end(renderHTML(trades))
     return
   }
-  
+
   if (url.pathname === '/api/trades') {
     const limit = url.searchParams.get('limit')
     const trades = getTrades(limit ? parseInt(limit) : undefined)

@@ -28,7 +28,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ mcp__binance__get_open_orders → Check open orders
     ☐ mcp__binance__cancel_order → Clean up duplicate or orphaned orders if any exist
     ☐ mcp__tradingJournal__list_trades → Review recent trades
-    ☐ mcp__binance__get_position_history → Verify journal accuracy against Binance records and update journal with win/loss, incorrect pnl, position_time_setup, position_time_closed, position_entry_price, position_avg_close_price
+    ☐ mcp__binance__get_position_history → Verify journal accuracy against Binance records and update journal with WIN/LOSS, incorrect P&L, position_time_setup, position_time_closed, position_entry_price, position_avg_close_price
     ☐ After mcp__binance__get_account → verify journal accuracy and update incorrect latest balance of the last position balance
 2. GET market charts & analysis
     ☐ mcp__chrome__get_symbol_screenshot_across_timeframes("ETHUSDC") → Capture 30m, 5m charts

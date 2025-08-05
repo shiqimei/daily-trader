@@ -1,1 +1,2 @@
-- [x] Sending alerts while any tool calls failed
+- [ ] Sending alerts while any tool calls failed
+- [ ] Remove TP2 (Need experiment)

@@ -103,13 +103,42 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 - NEVER use IOC, FOK or GTC orders for entries and TPS
 - NEVER trade against 30m trend direction
 - NEVER enter without 5m confirmation signal
+- NEVER enter trades without clear 30m trend confirmation (minimum 2 consecutive candles in trend direction)
+- NEVER enter SHORT positions near major support levels after massive selloffs
+- NEVER enter LONG positions near extreme highs after extended rallies (200+ point moves)
+- NEVER ignore low volume on 30m candles - it signals trend exhaustion
+- NEVER hold positions when 30m trend changes from trending to sideways
+- NEVER trade based on FOMO or hope - only trade with clear evidence
+- NEVER enter when market is too close to major support/resistance (poor R:R)
+- NEVER ignore three consecutive sideways 30m candles - this means exit immediately
+- NEVER close positions too early before trend exhaustion when winning
+- NEVER hesitate to exit when 30m trend transitions occur
+- NEVER increase position size after losses
+- NEVER enter trades with Risk/Reward ratio below 1.5:1
 2. MANDATORY ACTIONS ✓
+- MUST see clear 30m trend (HH/HL for up, LL/LH for down) before ANY entry. Sideways/choppy = NO TRADE
+- ALWAYS respect 30m trend direction
 - ALWAYS document entry reasoning and ATR values in Decisions
 - ALWAYS calculate and state expected R:R ratio
 - ALWAYS use 30m for trend direction, 5m for entry timing
 - ALWAYS set stops based on 30m ATR + market structure
 - ALWAYS use GTX orders for entries and TPs
 - ALWAYS verify order creation and recreate if failed
+- ALWAYS take partial profits (50%) at 1R to protect gains
+- ALWAYS exit immediately when 30m trend changes (no exceptions)
+- ALWAYS wait for 2+ consecutive 30m candles to confirm trend direction
+- ALWAYS check volume - declining volume means weak momentum
+- ALWAYS respect major support/resistance levels
+- ALWAYS move stop to breakeven after taking partial profits at 1R
+- ALWAYS follow rule-based exits even if showing small profit
+- ALWAYS accept small losses when following system rules
+- ALWAYS allow winning positions time to develop within confirmed trends
+- ALWAYS maintain 30% risk allocation with 10x leverage
+- ALWAYS prioritize capital preservation over opportunity capture
+- ALWAYS use ATR-based stops and targets for consistent R:R
+- ALWAYS exit when you see three sideways 30m candles (trend exhaustion)
+- ALWAYS remember: No clear 30m trend = No trade
+- ALWAYS remember: Rules > Opinions > Emotions
 ```
 
 # Trade Journal Entry Format

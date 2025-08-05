@@ -221,7 +221,7 @@ while (true) {
   try {
     await runClaude()
     await cleanupMcpServer() // kill MCP server processes
-    await sleep(60 * 2) // sleep 2 minutes
+    await sleep(30) // sleep 30 seconds
   } catch (error) {
     console.error(error)
     await cleanupMcpServer() // cleanup on error too

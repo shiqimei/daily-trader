@@ -1,9 +1,9 @@
 import { tradingSystemPrompt } from '@/prompts'
 import { logger } from '@/utils/logger'
 import { query } from '@anthropic-ai/claude-code'
+import { exec } from 'child_process'
 import dayjs from 'dayjs'
 import { config } from 'dotenv'
-import { exec } from 'child_process'
 import { promisify } from 'util'
 
 config()
@@ -34,14 +34,19 @@ async function sleep(seconds: number) {
 async function cleanupMcpServer() {
   try {
     logger.info('Cleaning up MCP server processes...')
-    
+
     // Find processes spawned by Claude that contain MCP server paths
-    const { stdout } = await execAsync(`ps aux | grep -E "(binance\.ts|chrome\.ts|tradingJournal\.ts|wechat\.ts)" | grep -v grep | awk '{print $2}'`)
-    
+    const { stdout } = await execAsync(
+      `ps aux | grep -E "(binance\.ts|chrome\.ts|tradingJournal\.ts|wechat\.ts)" | grep -v grep | awk '{print $2}'`
+    )
+
     if (stdout.trim()) {
-      const pids = stdout.trim().split('\n').filter(pid => pid)
+      const pids = stdout
+        .trim()
+        .split('\n')
+        .filter(pid => pid)
       logger.info(`Found ${pids.length} MCP server processes to cleanup: ${pids.join(', ')}`)
-      
+
       // Kill the processes
       for (const pid of pids) {
         try {
@@ -51,7 +56,7 @@ async function cleanupMcpServer() {
           logger.debug(`Process ${pid} already terminated`)
         }
       }
-      
+
       logger.info('MCP server cleanup completed')
     } else {
       logger.debug('No MCP server processes found to cleanup')
@@ -67,6 +72,7 @@ async function runClaude() {
     prompt: `UTC:${date} ultrathink, check trading journal, analyze market, and make decisions`,
     abortController: new AbortController(),
     options: {
+      model: 'claude-opus-4-1',
       maxTurns: 999,
       customSystemPrompt: tradingSystemPrompt,
       allowedTools: [

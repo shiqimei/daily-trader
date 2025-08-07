@@ -8,6 +8,10 @@ import { promisify } from 'util'
 
 config()
 
+// Parse command line arguments
+const args = process.argv.slice(2)
+const skipInitialWait = args.includes('--skip-wait')
+
 const execAsync = promisify(exec)
 
 async function sleep(seconds: number) {
@@ -237,10 +241,14 @@ async function runClaude() {
   }
 }
 
-// Initial startup wait to align with 15-minute intervals
-const initialWait = getSecondsUntilNext15MinInterval()
-console.log(`\nStartup: Waiting until next 15-minute mark at ${dayjs().add(initialWait, 'second').format('HH:mm:ss')}`)
-await sleep(initialWait)
+// Initial startup wait to align with 15-minute intervals (unless --skip-wait is used)
+if (!skipInitialWait) {
+  const initialWait = getSecondsUntilNext15MinInterval()
+  console.log(`\nStartup: Waiting until next 15-minute mark at ${dayjs().add(initialWait, 'second').format('HH:mm:ss')}`)
+  await sleep(initialWait)
+} else {
+  console.log('\nStartup: Skipping initial wait (--skip-wait flag detected)')
+}
 
 while (true) {
   try {

@@ -10,7 +10,7 @@ A successful stable profitable trading system consists of a couple of minor impr
 
 - Use tradingSystem.md as core trading system for flexibility
 - Focus on ETHUSDC, DO NOT TOUCH altcoin
-- Focus on 30m timeframe + 5m timeframe
+- Focus on 1h timeframe + 15m timeframe
 - TP/SL should be minimum 2:1, and ATR should be used to set TP/SL
 - Move SL to BE after TP1 reached
 - Use market order for entry and TP to save commission fee

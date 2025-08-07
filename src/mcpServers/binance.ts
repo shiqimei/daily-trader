@@ -186,7 +186,7 @@ const binanceTools: Tool[] = [
         },
         limit: {
           type: 'number',
-          description: 'Number of klines to return (30m-min: 10, 5m-min: 100; max 1500)',
+          description: 'Number of klines to return (1h-min: 10, 15m-min: 100; max 1500)',
           default: 100
         }
       },
@@ -236,19 +236,19 @@ const binanceTools: Tool[] = [
   {
     name: 'get_top_symbols',
     description:
-      'Get low-liquidity USDC pairs with orderbook gaps, filtered by 5-minute ATR and sorted by ATR ascending',
+      'Get low-liquidity USDC pairs with orderbook gaps, filtered by 15-minute ATR and sorted by ATR ascending',
     inputSchema: {
       type: 'object',
       properties: {
         limit: { type: 'number', description: 'Number of top symbols to return', default: 10 },
         minAtrBps: {
           type: 'number',
-          description: 'Minimum 5-minute ATR in basis points',
+          description: 'Minimum 15-minute ATR in basis points',
           default: 5
         },
         maxAtrBps: {
           type: 'number',
-          description: 'Maximum 5-minute ATR in basis points',
+          description: 'Maximum 15-minute ATR in basis points',
           default: 40
         }
       }
@@ -932,12 +932,12 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         const pairsWithAtrAndGap = await Promise.all(
           usdcPairs.map(async (ticker: any) => {
             try {
-              // Calculate 5m ATR
-              const atr5m = await calculateAtr(config, ticker.symbol, '5m')
-              const atrBps5m = Math.round(atr5m.bps)
+              // Calculate 15m ATR
+              const atr15m = await calculateAtr(config, ticker.symbol, '15m')
+              const atrBps15m = Math.round(atr15m.bps)
 
               // Check if ATR is within range
-              if (atrBps5m >= minAtrBps && atrBps5m <= maxAtrBps) {
+              if (atrBps15m >= minAtrBps && atrBps15m <= maxAtrBps) {
                 // Get orderbook to check for gaps
                 const orderbook = await makeRequest(config, '/fapi/v1/depth', {
                   symbol: ticker.symbol,
@@ -966,8 +966,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                       quote_volume: ticker.quoteVolume,
                       price_change_percent: ticker.priceChangePercent,
                       last_price: ticker.lastPrice,
-                      atr_bps_5m: atrBps5m,
-                      atr_quote_5m: parseFloat(atr5m.quote.toFixed(4)),
+                      atr_bps_15m: atrBps15m,
+                      atr_quote_15m: parseFloat(atr15m.quote.toFixed(4)),
                       best_bid: bestBid.toFixed(pricePrecision),
                       best_ask: bestAsk.toFixed(pricePrecision),
                       spread: spread.toFixed(pricePrecision),
@@ -985,10 +985,10 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           })
         )
 
-        // Filter out nulls and sort by atr_bps_5m ascending
+        // Filter out nulls and sort by atr_bps_15m ascending
         const filteredPairs = pairsWithAtrAndGap
           .filter(pair => pair !== null)
-          .sort((a: any, b: any) => a.atr_bps_5m - b.atr_bps_5m)
+          .sort((a: any, b: any) => a.atr_bps_15m - b.atr_bps_15m)
           .slice(0, limit)
 
         return {

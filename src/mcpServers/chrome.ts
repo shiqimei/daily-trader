@@ -11,7 +11,7 @@ import { z } from 'zod'
 
 const GetScreenBySymbolSchema = z.object({
   symbol: z.string().describe('Trading symbol (e.g., ETHUSDC)'),
-  interval: z.enum(['5m', '30m']).describe('Chart interval')
+  interval: z.enum(['15m', '1h']).describe('Chart interval')
 })
 
 const GetSymbolScreenshotAcrossTimeframesSchema = z.object({
@@ -31,7 +31,7 @@ const toolsList: Tool[] = [
         },
         interval: {
           type: 'string',
-          enum: ['5m', '30m'],
+          enum: ['15m', '1h'],
           description: 'Chart interval'
         }
       },
@@ -41,7 +41,7 @@ const toolsList: Tool[] = [
   {
     name: 'get_symbol_screenshot_across_timeframes',
     description:
-      'Capture screenshots of Binance futures chart for both 30m and 5m intervals sequentially',
+      'Capture screenshots of Binance futures chart for both 1h and 15m intervals sequentially',
     inputSchema: {
       type: 'object',
       properties: {
@@ -104,7 +104,7 @@ async function getTab(): Promise<Page> {
 async function captureScreenshotOnPage(
   page: Page,
   symbol: string,
-  interval: '5m' | '30m'
+  interval: '15m' | '1h'
 ): Promise<{ base64: string; symbol: string; interval: string }> {
   // Navigate to Binance futures page
   const url = `https://www.binance.com/en/futures/${symbol}`
@@ -147,15 +147,15 @@ async function captureScreenshotOnPage(
 
 async function captureScreenshot(
   symbol: string,
-  interval: '5m' | '30m'
+  interval: '15m' | '1h'
 ): Promise<{ base64: string; symbol: string; interval: string }> {
   const page = await getTab()
   return captureScreenshotOnPage(page, symbol, interval)
 }
 
 async function captureScreenshotsAcrossTimeframes(symbol: string): Promise<{
-  '5m': { base64: string; symbol: string; interval: string }
-  '30m': { base64: string; symbol: string; interval: string }
+  '15m': { base64: string; symbol: string; interval: string }
+  '1h': { base64: string; symbol: string; interval: string }
 }> {
   // Get a single tab
   const page = await getTab()
@@ -170,22 +170,22 @@ async function captureScreenshotsAcrossTimeframes(symbol: string): Promise<{
   // Wait for initial page load
   await new Promise(resolve => setTimeout(resolve, 5000))
 
-  // Capture 30m screenshot first
+  // Capture 1h screenshot first
   try {
     await page.evaluate(() => {
-      const button = document.getElementById('30m')
+      const button = document.getElementById('1h')
       if (button) {
         button.click()
       }
     })
   } catch (e) {
-    console.error(`Could not click 30m interval button: ${e}`)
+    console.error(`Could not click 1h interval button: ${e}`)
   }
 
   // Wait for chart to update
   await new Promise(resolve => setTimeout(resolve, 10000))
 
-  const screenshot30m = await page.screenshot({
+  const screenshot1h = await page.screenshot({
     encoding: 'base64',
     fullPage: false,
     clip: {
@@ -196,30 +196,30 @@ async function captureScreenshotsAcrossTimeframes(symbol: string): Promise<{
     }
   })
 
-  // Capture 5m screenshot
+  // Capture 15m screenshot
   try {
     await page.evaluate(() => {
-      const button = document.getElementById('5m')
+      const button = document.getElementById('15m')
       if (button) {
         button.click()
       }
     })
   } catch (e) {
-    console.error(`Could not click 5m interval button: ${e}`)
+    console.error(`Could not click 15m interval button: ${e}`)
   }
 
   // Wait for chart to update
   await new Promise(resolve => setTimeout(resolve, 10 * 1000))
 
-  const screenshot5m = await page.screenshot({
+  const screenshot15m = await page.screenshot({
     encoding: 'base64',
     fullPage: true,
     captureBeyondViewport: false
   })
 
   return {
-    '5m': { base64: screenshot5m, symbol, interval: '5m' },
-    '30m': { base64: screenshot30m, symbol, interval: '30m' }
+    '15m': { base64: screenshot15m, symbol, interval: '15m' },
+    '1h': { base64: screenshot1h, symbol, interval: '1h' }
   }
 }
 
@@ -268,12 +268,12 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           content: [
             {
               type: 'image',
-              data: screenshots['30m'].base64,
+              data: screenshots['1h'].base64,
               mimeType: 'image/png'
             } as any,
             {
               type: 'image',
-              data: screenshots['5m'].base64,
+              data: screenshots['15m'].base64,
               mimeType: 'image/png'
             } as any
           ]

@@ -25,10 +25,30 @@ async function sleep(seconds: number) {
         process.stdout.write('\r\x1b[K')
         resolve(undefined)
       } else {
-        process.stdout.write(`\r${remaining.toFixed(1)}s`)
+        const minutes = Math.floor(remaining / 60)
+        const seconds = remaining % 60
+        const formattedTime = `${minutes.toString().padStart(2, '0')}:${seconds.toFixed(1).padStart(4, '0')}`
+        process.stdout.write(`\r${formattedTime}`)
       }
     }, 100)
   })
+}
+
+function getSecondsUntilNext15MinInterval(): number {
+  const now = new Date()
+  const minutes = now.getMinutes()
+  const seconds = now.getSeconds()
+  
+  // Calculate minutes until next 15-minute mark (0, 15, 30, 45)
+  const minutesUntilNext15 = 15 - (minutes % 15)
+  
+  // If we're exactly on a 15-minute mark, wait for the next one
+  if (minutesUntilNext15 === 15 && seconds === 0) {
+    return 15 * 60
+  }
+  
+  // Convert to seconds and subtract current seconds
+  return (minutesUntilNext15 * 60) - seconds
 }
 
 async function cleanupMcpServer() {
@@ -217,11 +237,18 @@ async function runClaude() {
   }
 }
 
+// Initial startup wait to align with 15-minute intervals
+const initialWait = getSecondsUntilNext15MinInterval()
+console.log(`\nStartup: Waiting until next 15-minute mark at ${dayjs().add(initialWait, 'second').format('HH:mm:ss')}`)
+await sleep(initialWait)
+
 while (true) {
   try {
     await runClaude()
     await cleanupMcpServer() // kill MCP server processes
-    await sleep(13 * 60) // wait for 3 minutes
+    const secondsUntilNext15Min = getSecondsUntilNext15MinInterval()
+    console.log(`\nNext run scheduled at ${dayjs().add(secondsUntilNext15Min, 'second').format('HH:mm:ss')}`)
+    await sleep(secondsUntilNext15Min)
   } catch (error) {
     console.error(error)
     await cleanupMcpServer() // cleanup on error too

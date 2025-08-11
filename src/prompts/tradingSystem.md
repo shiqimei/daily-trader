@@ -53,8 +53,8 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
       • Execute post-only order for maker fee advantage
     ☐ Calculate SL/TP using 5m ATR:
       • Stop Loss: Place below HL (for longs) or above LH (for shorts) + 1.0x 5m ATR buffer
-      • Take Profit 1: 1.0x 5m ATR from entry (1R target)
-      • Take Profit 2: 2.0x 5m ATR from entry (2R target)
+      • Take Profit 1: 1.0x 5m ATR from entry (1R target, close 50%)
+      • Remaining Position: Hold until trend structure breaks
     ☐ Evaluate risk/reward potential (minimum 2:1)
     ☐ Entry Order Execution:
       • Get orderbook: mcp__binance__get_orderbook
@@ -74,16 +74,16 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
       • For LONG close: max(1R_target, best_bid + tick_size)
       • For SHORT close: min(1R_target, best_ask - tick_size)
       1R → Close 50% position + Move stop loss to breakeven
-    ☐ Set TP2 (GTX):
-      • For LONG close: max(2R_target, best_bid + tick_size)
-      • For SHORT close: min(2R_target, best_ask - tick_size)
-      2R → Close another 50%
-    ☐ Pattern Break Exit Rules:
-      • LONG EXIT: When new HH fails to exceed previous HH (momentum loss)
-      • SHORT EXIT: When new LL fails to go below previous LL (momentum loss)
-      • Exit on close of first candle after pattern failure confirmation
+    ☐ Remaining 50% Position Management:
+      • NO fixed TP2 - Hold until trend structure breaks
+      • Monitor pattern continuation on every 5m candle
+      • Trail stop to previous HL (for longs) or LH (for shorts) as pattern extends
+    ☐ Trend Structure Break Exit Rules:
+      • LONG EXIT: When next peak fails to exceed previous HH (uptrend breaks)
+      • SHORT EXIT: When next trough fails to go below previous LL (downtrend breaks)
+      • Exit entire remaining position on close of first 5m candle after structure break
+      • Example: In uptrend, if price makes a lower high instead of higher high, exit immediately
     !! Monitor pattern integrity continuously
-    !! Exit immediately on pattern break regardless of P&L
     ☐ Exit → Get account balance → mcp__binance__get_account → Record trade exit → mcp__tradingJournal__update_trade_exit
       • ALWAYS include account_balance parameter after getting current balance
     ☐ Post-trade → Add review → mcp__tradingJournal__add_post_trade_review
@@ -128,26 +128,27 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 🚫 NEVER trade based on incomplete 5m trend patterns
 
 ## 2. POSITION MANAGEMENT & EXIT RULES
-✅ UPTREND POSITION EXITS:
-  - Primary Exit: When HH->HL pattern is violated (trend structure breaks)
-  - Specific Trigger: First HH peak after entry doesn't surpass previous HH
-  - Confirmation: Exit on close price of first candle after structure break
-  - Partial Profits: Take 50% at 1R, move SL to breakeven
+✅ UPTREND POSITION MANAGEMENT:
+  - Take Profit 1: Close 50% at 1R (1x ATR), move SL to breakeven
+  - Remaining 50%: Hold until trend structure breaks (NO fixed TP2)
+  - Trend Break Signal: Next peak fails to exceed previous HH
+  - Exit Trigger: Close entire remaining position on 5m candle close after break
 
-✅ DOWNTREND POSITION EXITS:
-  - Primary Exit: When LL->LH pattern is violated (trend structure breaks)
-  - Specific Trigger: First LL trough after entry doesn't go below previous LL
-  - Confirmation: Exit on close price of first candle after structure break
-  - Partial Profits: Take 50% at 1R, move SL to breakeven
+✅ DOWNTREND POSITION MANAGEMENT:
+  - Take Profit 1: Close 50% at 1R (1x ATR), move SL to breakeven
+  - Remaining 50%: Hold until trend structure breaks (NO fixed TP2)
+  - Trend Break Signal: Next trough fails to go below previous LL
+  - Exit Trigger: Close entire remaining position on 5m candle close after break
 
 ✅ SYSTEMATIC EXIT RULES:
-  - Follow trend structure breaks immediately - no exceptions
-  - Accept small losses when pattern invalidation occurs
-  - Allow winning positions time to develop within confirmed patterns
-  - Exit when momentum weakness shows (pattern failure to extend)
-🚫 NEVER hold positions when trend pattern violates
-🚫 NEVER ignore trend structure break signals
-🚫 NEVER hesitate to exit on pattern invalidation
+  - NO fixed 2R target - let winners run with the trend
+  - Trail stops to previous swing points as trend extends
+  - Exit immediately when trend structure breaks - no exceptions
+  - Monitor every 5m candle for pattern continuation
+  - Example: Long position - if price makes lower high instead of higher high, EXIT
+🚫 NEVER use fixed TP2 targets that limit profit potential
+🚫 NEVER hold positions after trend structure breaks
+🚫 NEVER ignore pattern failure signals hoping for reversal
 
 ## 3. RISK & MONEY MANAGEMENT
 ✅ Maintain 30% risk allocation with 10x leverage

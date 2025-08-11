@@ -27,11 +27,11 @@ const wechatTools: Tool[] = [
       properties: {
         title: {
           type: 'string',
-          description: 'Notification title'
+          description: 'Notification title (max 16 chars)'
         },
         content: {
           type: 'string',
-          description: 'Notification content'
+          description: 'Notification content (max 16 chars)'
         }
       },
       required: ['title', 'content']

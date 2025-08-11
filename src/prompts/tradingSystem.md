@@ -67,6 +67,9 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
       • Document previous HH/HL or LL/LH levels used for pattern
 5. Position Management & Pattern-Based Exits
     ☐ Entry → Record trade entry → mcp__tradingJournal__add_trade_entry
+    ☐ Entry → Send WeChat notification → mcp__wechat__push_notification
+      • Title: "LONG OPEN" or "SHORT OPEN" (max 16 chars)
+      • Content: "$[price] SL:$[sl]" (max 16 chars)
     ☐ Entry → Set market SL based on pattern structure:
       • LONG: Below HL + 1.0x 5m ATR buffer
       • SHORT: Above LH + 1.0x 5m ATR buffer
@@ -86,6 +89,10 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     !! Monitor pattern integrity continuously
     ☐ Exit → Get account balance → mcp__binance__get_account → Record trade exit → mcp__tradingJournal__update_trade_exit
       • ALWAYS include account_balance parameter after getting current balance
+    ☐ Exit → Send WeChat notification → mcp__wechat__push_notification
+      • For profit: Title: "CLOSED +[R]R" | Content: "P&L: +$[pnl]" 
+      • For loss: Title: "CLOSED -[R]R" | Content: "P&L: -$[pnl]"
+      • For breakeven: Title: "CLOSED BE" | Content: "P&L: $0"
     ☐ Post-trade → Add review → mcp__tradingJournal__add_post_trade_review
       • Document pattern performance and exit trigger
       • Note if exit was TP-based or pattern-break based
@@ -100,6 +107,22 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ Post-trade review → mcp__tradingJournal__add_post_trade_review
     ☐ Include ATR values used and order IDs for tracking
     ☐ ALWAYS capture account balance after trade completion for performance tracking
+8. WeChat Notification Rules (POSITION EVENTS ONLY)
+    ☐ ONLY send notifications for position open/close events
+    ☐ Position Open Templates:
+      • LONG: Title: "LONG OPEN" | Content: "$3850 SL:$3800"
+      • SHORT: Title: "SHORT OPEN" | Content: "$3850 SL:$3900"
+    ☐ Position Close Templates:
+      • Profit: Title: "CLOSED +2.5R" | Content: "P&L: +$125"
+      • Loss: Title: "CLOSED -1R" | Content: "P&L: -$50"
+      • Breakeven: Title: "CLOSED BE" | Content: "P&L: $0"
+    ☐ Format Requirements:
+      • Title: Maximum 16 characters
+      • Content: Maximum 16 characters including spaces
+      • Price: Round to nearest dollar for brevity
+      • R-value: Show to 1 decimal place
+    🚫 NEVER send notifications for analysis, warnings, or non-position events
+    🚫 NEVER exceed 16 character limit in title or content
 ```
 
 # Critical Rules (NEVER VIOLATE)

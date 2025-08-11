@@ -38,21 +38,21 @@ async function sleep(seconds: number) {
   })
 }
 
-function getSecondsUntilNext15MinInterval(): number {
+function getSecondsUntilNext5MinInterval(): number {
   const now = new Date()
   const minutes = now.getMinutes()
   const seconds = now.getSeconds()
   
-  // Calculate minutes until next 15-minute mark (0, 15, 30, 45)
-  const minutesUntilNext15 = 15 - (minutes % 15)
+  // Calculate minutes until next 5-minute mark (0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)
+  const minutesUntilNext5 = 5 - (minutes % 5)
   
-  // If we're exactly on a 15-minute mark, wait for the next one
-  if (minutesUntilNext15 === 15 && seconds === 0) {
-    return 15 * 60
+  // If we're exactly on a 5-minute mark, wait for the next one
+  if (minutesUntilNext5 === 5 && seconds === 0) {
+    return 5 * 60
   }
   
   // Convert to seconds and subtract current seconds
-  return (minutesUntilNext15 * 60) - seconds
+  return (minutesUntilNext5 * 60) - seconds
 }
 
 async function cleanupMcpServer() {
@@ -241,10 +241,10 @@ async function runClaude() {
   }
 }
 
-// Initial startup wait to align with 15-minute intervals (unless --skip-wait is used)
+// Initial startup wait to align with 5-minute intervals (unless --skip-wait is used)
 if (!skipInitialWait) {
-  const initialWait = getSecondsUntilNext15MinInterval()
-  console.log(`\nStartup: Waiting until next 15-minute mark at ${dayjs().add(initialWait, 'second').format('HH:mm:ss')}`)
+  const initialWait = getSecondsUntilNext5MinInterval()
+  console.log(`\nStartup: Waiting until next 5-minute mark at ${dayjs().add(initialWait, 'second').format('HH:mm:ss')}`)
   await sleep(initialWait)
 } else {
   console.log('\nStartup: Skipping initial wait (--skip-wait flag detected)')
@@ -254,9 +254,9 @@ while (true) {
   try {
     await runClaude()
     await cleanupMcpServer() // kill MCP server processes
-    const secondsUntilNext15Min = getSecondsUntilNext15MinInterval()
-    console.log(`\nNext run scheduled at ${dayjs().add(secondsUntilNext15Min, 'second').format('HH:mm:ss')}`)
-    await sleep(secondsUntilNext15Min)
+    const secondsUntilNext5Min = getSecondsUntilNext5MinInterval()
+    console.log(`\nNext run scheduled at ${dayjs().add(secondsUntilNext5Min, 'second').format('HH:mm:ss')}`)
+    await sleep(secondsUntilNext5Min)
   } catch (error) {
     console.error(error)
     await cleanupMcpServer() // cleanup on error too

@@ -11,7 +11,7 @@ import { z } from 'zod'
 
 const GetScreenBySymbolSchema = z.object({
   symbol: z.string().describe('Trading symbol (e.g., ETHUSDC)'),
-  interval: z.enum(['15m', '1h']).describe('Chart interval')
+  interval: z.enum(['5m']).describe('Chart interval')
 })
 
 const GetSymbolScreenshotAcrossTimeframesSchema = z.object({
@@ -31,7 +31,7 @@ const toolsList: Tool[] = [
         },
         interval: {
           type: 'string',
-          enum: ['15m', '1h'],
+          enum: ['5m'],
           description: 'Chart interval'
         }
       },
@@ -41,7 +41,7 @@ const toolsList: Tool[] = [
   {
     name: 'get_symbol_screenshot_across_timeframes',
     description:
-      'Capture screenshots of Binance futures chart for both 1h and 15m intervals sequentially',
+      'Capture screenshots of Binance futures chart for 5m interval',
     inputSchema: {
       type: 'object',
       properties: {
@@ -104,7 +104,7 @@ async function getTab(): Promise<Page> {
 async function captureScreenshotOnPage(
   page: Page,
   symbol: string,
-  interval: '15m' | '1h'
+  interval: '5m'
 ): Promise<{ base64: string; symbol: string; interval: string }> {
   // Navigate to Binance futures page
   const url = `https://www.binance.com/en/futures/${symbol}`
@@ -147,15 +147,14 @@ async function captureScreenshotOnPage(
 
 async function captureScreenshot(
   symbol: string,
-  interval: '15m' | '1h'
+  interval: '5m'
 ): Promise<{ base64: string; symbol: string; interval: string }> {
   const page = await getTab()
   return captureScreenshotOnPage(page, symbol, interval)
 }
 
 async function captureScreenshotsAcrossTimeframes(symbol: string): Promise<{
-  '15m': { base64: string; symbol: string; interval: string }
-  '1h': { base64: string; symbol: string; interval: string }
+  '5m': { base64: string; symbol: string; interval: string }
 }> {
   // Get a single tab
   const page = await getTab()
@@ -170,22 +169,22 @@ async function captureScreenshotsAcrossTimeframes(symbol: string): Promise<{
   // Wait for initial page load
   await new Promise(resolve => setTimeout(resolve, 5000))
 
-  // Capture 1h screenshot first
+  // Capture 5m screenshot
   try {
     await page.evaluate(() => {
-      const button = document.getElementById('1h')
+      const button = document.getElementById('5m')
       if (button) {
         button.click()
       }
     })
   } catch (e) {
-    console.error(`Could not click 1h interval button: ${e}`)
+    console.error(`Could not click 5m interval button: ${e}`)
   }
 
   // Wait for chart to update
   await new Promise(resolve => setTimeout(resolve, 10000))
 
-  const screenshot1h = await page.screenshot({
+  const screenshot5m = await page.screenshot({
     encoding: 'base64',
     fullPage: false,
     clip: {
@@ -196,30 +195,8 @@ async function captureScreenshotsAcrossTimeframes(symbol: string): Promise<{
     }
   })
 
-  // Capture 15m screenshot
-  try {
-    await page.evaluate(() => {
-      const button = document.getElementById('15m')
-      if (button) {
-        button.click()
-      }
-    })
-  } catch (e) {
-    console.error(`Could not click 15m interval button: ${e}`)
-  }
-
-  // Wait for chart to update
-  await new Promise(resolve => setTimeout(resolve, 10 * 1000))
-
-  const screenshot15m = await page.screenshot({
-    encoding: 'base64',
-    fullPage: true,
-    captureBeyondViewport: false
-  })
-
   return {
-    '15m': { base64: screenshot15m, symbol, interval: '15m' },
-    '1h': { base64: screenshot1h, symbol, interval: '1h' }
+    '5m': { base64: screenshot5m, symbol, interval: '5m' }
   }
 }
 
@@ -268,12 +245,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
           content: [
             {
               type: 'image',
-              data: screenshots['1h'].base64,
-              mimeType: 'image/png'
-            } as any,
-            {
-              type: 'image',
-              data: screenshots['15m'].base64,
+              data: screenshots['5m'].base64,
               mimeType: 'image/png'
             } as any
           ]

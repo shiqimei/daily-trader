@@ -46,7 +46,7 @@ async function getSymbolInfo(config: BinanceConfig, symbol: string): Promise<any
 async function calculateAtr(
   config: BinanceConfig,
   symbol: string,
-  timeframe: Interval = '15m',
+  timeframe: Interval = '5m',
   period: number = 14
 ): Promise<{ bps: number; quote: number }> {
   // Fetch enough klines to calculate ATR (period + 1 for first TR calculation)
@@ -799,7 +799,7 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
 
       case 'get_klines_all_intervals': {
         const { symbol, limit = 20 } = args as { symbol: string; limit?: number }
-        const intervals: Interval[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d']
+        const intervals: Interval[] = ['1m', '5m']
         const results: any = {}
 
         for (const interval of intervals) {
@@ -932,12 +932,12 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
         const pairsWithAtrAndGap = await Promise.all(
           usdcPairs.map(async (ticker: any) => {
             try {
-              // Calculate 15m ATR
-              const atr15m = await calculateAtr(config, ticker.symbol, '15m')
-              const atrBps15m = Math.round(atr15m.bps)
+              // Calculate 5m ATR
+              const atr5m = await calculateAtr(config, ticker.symbol, '5m')
+              const atrBps5m = Math.round(atr5m.bps)
 
               // Check if ATR is within range
-              if (atrBps15m >= minAtrBps && atrBps15m <= maxAtrBps) {
+              if (atrBps5m >= minAtrBps && atrBps5m <= maxAtrBps) {
                 // Get orderbook to check for gaps
                 const orderbook = await makeRequest(config, '/fapi/v1/depth', {
                   symbol: ticker.symbol,
@@ -966,8 +966,8 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
                       quote_volume: ticker.quoteVolume,
                       price_change_percent: ticker.priceChangePercent,
                       last_price: ticker.lastPrice,
-                      atr_bps_15m: atrBps15m,
-                      atr_quote_15m: parseFloat(atr15m.quote.toFixed(4)),
+                      atr_bps_5m: atrBps5m,
+                      atr_quote_5m: parseFloat(atr5m.quote.toFixed(4)),
                       best_bid: bestBid.toFixed(pricePrecision),
                       best_ask: bestAsk.toFixed(pricePrecision),
                       spread: spread.toFixed(pricePrecision),

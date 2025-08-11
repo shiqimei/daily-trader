@@ -35,33 +35,40 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ Analyze chart patterns, support/resistance, and trend direction from visual data
     ☐ mcp__binance__get_klines → Get latest candle for ATR values only
     ☐ Note ATR values: atr_bps (basis points) and atr_quote for each timeframe
-3. Market Analysis
-    - Trend Analysis (1h): Determine direction (long/short), identify S/R levels, breakout/reversal patterns
-    - Entry Analysis (15m): Find precise entry points within the 1h trend context
-    - ATR Analysis: Use 1h ATR as primary reference for volatility and position sizing
-    - Market Context: Overall trend direction, key levels, momentum alignment
-    - Trading Opportunity: Only trade when 15m aligns with 1h trend
+3. Market Analysis & Pattern Recognition
+    - Pattern Identification (1h): Look for HH->HL (uptrend) or LL->LH (downtrend) structures
+    - Uptrend Analysis: Identify sequence of Higher High followed by Higher Low
+    - Downtrend Analysis: Identify sequence of Lower Low followed by Lower High
+    - Entry Signal: Wait for candle close above previous HH (long) or below previous LL (short)
+    - ATR Analysis: Use 1h ATR for stop loss and take profit calculations
+    - Pattern Validation: Ensure complete pattern formation before considering entry
+    - Timing: Use 15m for refined entry after 1h pattern confirmation
 4. Trading Decision & Entry Management
-    ☐ Use your experience to identify high-probability setups
-    ☐ Ensure 1h trend direction is clear (UP/DOWN) before any entry
-    ☐ Use 15m timeframe for precise entry timing
+    ☐ Pattern Confirmation Requirements:
+      • LONG: HH->HL pattern complete + candle close above previous HH
+      • SHORT: LL->LH pattern complete + candle close below previous LL
+    ☐ Entry Execution at Pattern Confirmation:
+      • Use close price of confirmation candle as entry reference
+      • Execute post-only order for maker fee advantage
     ☐ Calculate SL/TP using 1h ATR:
-      • Stop Loss: 1.0-1.5x 1h ATR from entry (based on structure)
-      • Take Profit 1: 1.0x 1h ATR (1R target)
-      • Take Profit 2: 2.0x 1h ATR (2R target)
+      • Stop Loss: Place below HL (for longs) or above LH (for shorts) + 1.0x ATR buffer
+      • Take Profit 1: 1.0x 1h ATR from entry (1R target)
+      • Take Profit 2: 2.0x 1h ATR from entry (2R target)
     ☐ Evaluate risk/reward potential (minimum 2:1)
     ☐ Entry Order Execution:
       • Get orderbook: mcp__binance__get_orderbook
-      • For LONG: Create GTX order at min(desired_price, best_bid + tick_size)
-      • For SHORT: Create GTX order at max(desired_price, best_ask - tick_size)
+      • For LONG: Create GTX order at min(confirmation_close, best_bid + tick_size)
+      • For SHORT: Create GTX order at max(confirmation_close, best_ask - tick_size)
       • Check order status with orderId
       • If GTX order rejected, retry with adjusted price
     ☐ Document pre-trade analysis → mcp__tradingJournal__add_pre_trade_analysis
-      • Include market context, trend, key levels, entry trigger
-      • Specify setup type, confluence factors, position sizing rationale
-5. Position Management
+      • Include identified pattern (HH->HL or LL->LH), confirmation candle details
+      • Document previous HH/HL or LL/LH levels used for pattern
+5. Position Management & Pattern-Based Exits
     ☐ Entry → Record trade entry → mcp__tradingJournal__add_trade_entry
-    ☐ Entry → Set market SL based on ATR + structure
+    ☐ Entry → Set market SL based on pattern structure:
+      • LONG: Below HL + 1.0x ATR buffer
+      • SHORT: Above LH + 1.0x ATR buffer
     ☐ Set TP1 (GTX):
       • For LONG close: max(1R_target, best_bid + tick_size)
       • For SHORT close: min(1R_target, best_ask - tick_size)
@@ -70,15 +77,17 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
       • For LONG close: max(2R_target, best_bid + tick_size)
       • For SHORT close: min(2R_target, best_ask - tick_size)
       2R → Close another 50%
-    ☐ Retracement Exit:
-      • Update our post-only TP orders as strcuture changed
-    !! Check order creation status and recreate if failed
-    !! Create orders if some are missing to ensure our SL/TP well executed
+    ☐ Pattern Break Exit Rules:
+      • LONG EXIT: When new HH fails to exceed previous HH (momentum loss)
+      • SHORT EXIT: When new LL fails to go below previous LL (momentum loss)
+      • Exit on close of first candle after pattern failure confirmation
+    !! Monitor pattern integrity continuously
+    !! Exit immediately on pattern break regardless of P&L
     ☐ Exit → Get account balance → mcp__binance__get_account → Record trade exit → mcp__tradingJournal__update_trade_exit
       • ALWAYS include account_balance parameter after getting current balance
     ☐ Post-trade → Add review → mcp__tradingJournal__add_post_trade_review
-      • Grade execution quality, note mistakes/lessons
-      • Record emotional state and rule adherence
+      • Document pattern performance and exit trigger
+      • Note if exit was TP-based or pattern-break based
 6. Order Verification & Management
     ☐ After creating GTX orders, verify with mcp__binance__get_order using orderId
     ☐ If order status is REJECTED or EXPIRED, recreate with adjusted price
@@ -95,29 +104,49 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
 # Critical Rules (NEVER VIOLATE)
 
 ```yml
-## 1. TREND ANALYSIS & ENTRY RULES
-✅ MUST see clear 1h trend structure before ANY entry:
-  - Uptrend: Higher Highs (HH) + Higher Lows (HL)
-  - Downtrend: Lower Lows (LL) + Lower Highs (LH)
-  - Sideways/Choppy = NO TRADE
-✅ Wait for minimum 2 consecutive 1h candles confirming trend direction
-✅ Use 1h timeframe for trend direction, 15m for precise entry timing
-✅ Check volume on 1h candles - declining volume signals trend exhaustion
-🚫 NEVER trade against established 1h trend direction
-🚫 NEVER enter without both 1h trend + 15m confirmation signal
-🚫 NEVER trade based on FOMO, hope, or unclear evidence
+## 1. TREND IDENTIFICATION & ENTRY RULES
+✅ UPTREND PATTERN (HH->HL Structure):
+  - Identify Higher High (HH) followed by Higher Low (HL) sequence
+  - Wait for one complete candle to close above the previous HH level (confirmation)
+  - Entry: Execute at close price of confirmation candle using post-only order
+  - Primary Signal: HH->HL pattern establishes upward trend structure
+
+✅ DOWNTREND PATTERN (LL->LH Structure):
+  - Identify Lower Low (LL) followed by Lower High (LH) sequence  
+  - Wait for one complete candle to close below the previous LL level (confirmation)
+  - Entry: Execute at close price of confirmation candle using post-only order
+  - Primary Signal: LL->LH pattern establishes downward trend structure
+
+✅ TREND FOLLOWING RULES:
+  - Use 1h timeframe for trend structure identification
+  - Use 15m timeframe for precise entry timing within confirmed trend
+  - Wait for pattern completion before any trade execution
+  - Check volume alignment with trend direction on 1h candles
+🚫 NEVER trade without clear HH->HL or LL->LH pattern confirmation
+🚫 NEVER enter during sideways/choppy market conditions
+🚫 NEVER trade based on incomplete trend patterns
 
 ## 2. POSITION MANAGEMENT & EXIT RULES
-✅ Take partial profits (50%) at 1R to protect gains
-✅ Move stop loss to breakeven after reaching 1R target
-✅ Exit immediately when 1h trend changes - no exceptions
-✅ Exit when seeing 3 consecutive sideways 1h candles (trend exhaustion)
-✅ Follow rule-based exits even if showing small profit
-✅ Accept small losses when following system rules
-✅ Allow winning positions time to develop within confirmed trends
-🚫 NEVER hold positions when 1h trend transitions from trending to sideways
-🚫 NEVER close winning positions too early before trend exhaustion
-🚫 NEVER hesitate to exit when 1h trend transitions occur
+✅ UPTREND POSITION EXITS:
+  - Primary Exit: When HH->HL pattern is violated (trend structure breaks)
+  - Specific Trigger: First HH peak after entry doesn't surpass previous HH
+  - Confirmation: Exit on close price of first candle after structure break
+  - Partial Profits: Take 50% at 1R, move SL to breakeven
+
+✅ DOWNTREND POSITION EXITS:
+  - Primary Exit: When LL->LH pattern is violated (trend structure breaks)
+  - Specific Trigger: First LL trough after entry doesn't go below previous LL
+  - Confirmation: Exit on close price of first candle after structure break
+  - Partial Profits: Take 50% at 1R, move SL to breakeven
+
+✅ SYSTEMATIC EXIT RULES:
+  - Follow trend structure breaks immediately - no exceptions
+  - Accept small losses when pattern invalidation occurs
+  - Allow winning positions time to develop within confirmed patterns
+  - Exit when momentum weakness shows (pattern failure to extend)
+🚫 NEVER hold positions when trend pattern violates
+🚫 NEVER ignore trend structure break signals
+🚫 NEVER hesitate to exit on pattern invalidation
 
 ## 3. RISK & MONEY MANAGEMENT
 ✅ Maintain 30% risk allocation with 10x leverage

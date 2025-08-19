@@ -37,7 +37,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ mcp__binance__get_klines → Get latest 5m candle for ATR values
     ☐ Note 5m ATR values: atr_bps (basis points) and atr_quote
 3. Market Analysis & Pattern Recognition
-    - Pattern Identification (5m): Look for HH->HL (uptrend) or LL->LH (downtrend) structures
+    - Pattern Identification (5m): Look for nearest HH->HL (uptrend) or LL->LH (downtrend) structures
     - Uptrend Analysis: Identify sequence of Higher High followed by Higher Low on 5m chart
     - Downtrend Analysis: Identify sequence of Lower Low followed by Lower High on 5m chart
     - Entry Signal: Wait for 5m candle close above previous HH (long) or below previous LL (short)
@@ -90,7 +90,7 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
     ☐ Exit → Get account balance → mcp__binance__get_account → Record trade exit → mcp__tradingJournal__update_trade_exit
       • ALWAYS include account_balance parameter after getting current balance
     ☐ Exit → Send WeChat notification → mcp__wechat__push_notification
-      • For profit: Title: "CLOSED +[R]R" | Content: "P&L: +$[pnl]" 
+      • For profit: Title: "CLOSED +[R]R" | Content: "P&L: +$[pnl]"
       • For loss: Title: "CLOSED -[R]R" | Content: "P&L: -$[pnl]"
       • For breakeven: Title: "CLOSED BE" | Content: "P&L: $0"
     ☐ Post-trade → Add review → mcp__tradingJournal__add_post_trade_review
@@ -123,83 +123,4 @@ For each run, starting from receiving a user message: `UTC:{timestamp}`:
       • R-value: Show to 1 decimal place
     🚫 NEVER send notifications for analysis, warnings, or non-position events
     🚫 NEVER exceed 16 character limit in title or content
-```
-
-# Critical Rules (NEVER VIOLATE)
-
-```yml
-## 1. TREND IDENTIFICATION & ENTRY RULES (5M ONLY)
-✅ UPTREND PATTERN (HH->HL Structure on 5m):
-  - Identify Higher High (HH) followed by Higher Low (HL) sequence on 5m chart
-  - Wait for one complete 5m candle to close above the previous HH level (confirmation)
-  - Entry: Execute at close price of 5m confirmation candle using post-only order
-  - Primary Signal: 5m HH->HL pattern establishes upward trend structure
-
-✅ DOWNTREND PATTERN (LL->LH Structure on 5m):
-  - Identify Lower Low (LL) followed by Lower High (LH) sequence on 5m chart
-  - Wait for one complete 5m candle to close below the previous LL level (confirmation)
-  - Entry: Execute at close price of 5m confirmation candle using post-only order
-  - Primary Signal: 5m LL->LH pattern establishes downward trend structure
-
-✅ TREND FOLLOWING RULES:
-  - Use 5m timeframe EXCLUSIVELY for all pattern identification and trading
-  - Wait for complete 5m pattern formation before any trade execution
-  - Check volume alignment with trend direction on 5m candles
-  - All ATR calculations based on 5m timeframe data
-🚫 NEVER trade without clear 5m HH->HL or LL->LH pattern confirmation
-🚫 NEVER use higher timeframes (1h, 15m) for trading decisions
-🚫 NEVER trade based on incomplete 5m trend patterns
-
-## 2. POSITION MANAGEMENT & EXIT RULES
-✅ UPTREND POSITION MANAGEMENT:
-  - Take Profit 1: Close 50% at 1R (1x ATR), move SL to breakeven
-  - Remaining 50%: Hold until trend structure breaks (NO fixed TP2)
-  - Trend Break Signal: Next peak fails to exceed previous HH
-  - Exit Trigger: Close entire remaining position on 5m candle close after break
-
-✅ DOWNTREND POSITION MANAGEMENT:
-  - Take Profit 1: Close 50% at 1R (1x ATR), move SL to breakeven
-  - Remaining 50%: Hold until trend structure breaks (NO fixed TP2)
-  - Trend Break Signal: Next trough fails to go below previous LL
-  - Exit Trigger: Close entire remaining position on 5m candle close after break
-
-✅ SYSTEMATIC EXIT RULES:
-  - NO fixed 2R target - let winners run with the trend
-  - Trail stops to previous swing points as trend extends
-  - Exit immediately when trend structure breaks - no exceptions
-  - Monitor every 5m candle for pattern continuation
-  - Example: Long position - if price makes lower high instead of higher high, EXIT
-🚫 NEVER use fixed TP2 targets that limit profit potential
-🚫 NEVER hold positions after trend structure breaks
-🚫 NEVER ignore pattern failure signals hoping for reversal
-
-## 3. RISK & MONEY MANAGEMENT
-✅ Maintain 30% risk allocation with 10x leverage
-✅ Calculate Risk/Reward ratio - minimum 1.5:1, prefer 2:1 or better
-✅ Use 5m ATR for position sizing and stop/target placement
-✅ Set stop loss based on 5m ATR + market structure
-✅ Document entry reasoning and 5m ATR values in all decisions
-🚫 NEVER risk more than 30% per trade
-🚫 NEVER ignore 5m ATR in position sizing calculations
-🚫 NEVER enter trades with Risk/Reward ratio below 1.5:1
-🚫 NEVER increase position size after losses
-
-## 4. MARKET CONTEXT & LEVELS
-✅ Respect major support/resistance levels in all decisions
-✅ Prioritize capital preservation over opportunity capture
-🚫 NEVER enter SHORT near major support after massive selloffs
-🚫 NEVER enter LONG near extreme highs after extended rallies (200+ points)
-🚫 NEVER enter when price is too close to major S/R (poor Risk/Reward)
-
-## 5. ORDER EXECUTION & TECHNICAL
-✅ Use GTX orders for entries and take profits
-✅ Verify order creation and recreate if failed
-✅ Use ATR-based stops and targets for consistent Risk/Reward
-🚫 NEVER use IOC, FOK or GTC orders for entries and take profits
-
-## 6. CORE PRINCIPLES
-✅ Rules > Opinions > Emotions
-✅ No clear 5m trend pattern = No trade
-✅ Evidence-based decisions only
-✅ 5m timeframe ONLY for all trading decisions
 ```
